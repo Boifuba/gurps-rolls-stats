@@ -1,7 +1,7 @@
 // statsDialog.js - Statistics dialog UI for displaying roll analysis and charts
 import { MOD_ID, SET_LOG } from './constants.js';
 import { computeStats } from './statsCalculator.js';
-import { loadGoogleCharts, drawGoogleChart } from './googleChartUtils.js';
+import { drawRollsChart } from './chartUtils.js';
 import { escapeHtml } from './utils.js';
 
 function getActorNameForUser(rolls, userName) {
@@ -138,7 +138,7 @@ function renderComparativeStats() {
 
   return `
     ${css}
-    <div style="padding:1rem; display:grid; gap:1rem; max-width:800px;">
+    <div style="padding:1rem; display:grid; gap:1rem; ">
       <div style="text-align:center; margin-bottom:1rem; border-bottom:2px solid #ccc; padding-bottom:1rem;">
         <h2 style="margin:0; font-size:1.5rem;">Ranking</h2>
         <p style="margin:.5rem 0; color:#666; font-size:.9rem;">Total rolls recorded: ${currentRolls.length}</p>
@@ -151,11 +151,6 @@ function renderComparativeStats() {
         ${section("Worst Success", "#ffc107", worstHtml)}
       </div>
 
-      <div style="text-align:center; margin-top:1rem;">
-        <button id="grs-print-ranking" class="grs-print-btn">
-          <i class="fa-solid fa-list-ol"></i> Print ranking to chat
-        </button>
-      </div>
     </div>
   `;
 }
@@ -308,6 +303,14 @@ export async function showComparativeStatsDialog() {
     },
     content: renderComparativeStats(),
     buttons: [
+      { 
+        action: "print-ranking", 
+        label: "Print Ranking to Chat", 
+        icon: "fa-solid fa-list-ol",
+        callback: async () => {
+          await printAllRankingsToChat(rankings);
+        }
+      },
       { action: "close", label: "Close", icon: "fa-solid fa-xmark", default: true }
     ],
     render: (event, dialog) => {
@@ -317,16 +320,11 @@ export async function showComparativeStatsDialog() {
         wc.style.overflowY = "auto";
         wc.style.maxHeight = "70vh";
       }
-      const printBtn = wc.querySelector("#grs-print-ranking");
-      if (printBtn) {
-        printBtn.addEventListener("click", async () => {
-          await printAllRankingsToChat(rankings);
-        });
-      }
     }
   });
 }
 
+/* ---------- Comparison utility functions ---------- */
 /* ---------- /stats (chart dialog — mantido) ---------- */
 const formatValue = (value, decimals = 2) =>
   (value == null || Number.isNaN(value)) ? "—" : Number(value).toFixed(decimals);
@@ -354,7 +352,7 @@ function renderStats(selectedUser) {
   const sumCells = Array.from({ length: 16 }, (_, i) => `<td>${stats.totals[i + 3] || 0}</td>`).join("");
 
   return `
-    <div class="p-2" style="display:grid; gap:.5rem; max-width:800px;">
+    <div class="p-2" style="display:grid; gap:.5rem; ">
       <div style="display:flex; gap:.5rem; align-items:center;">
         <label>Player:</label>
         <select id="grs-user" style="flex:1;">
@@ -384,9 +382,8 @@ function renderStats(selectedUser) {
       </div>
 
       <hr/>
-      <div style="display:flex; justify-content:space-between; align-items:center;">
+      <div>
         <strong>Roll Distribution (3d6 Totals)</strong>
-        <button id="grs-export-png" type="button"><i class="fa-solid fa-image"></i> Export PNG</button>
       </div>
       ${noDataMessage}
       <div id="grs-chart" style="width:100%; height:300px; max-width:100%;"></div>
@@ -410,7 +407,6 @@ function renderStats(selectedUser) {
 function attachHandlers(windowContent, selectedUser, dialog) {
   const userSelect = windowContent.querySelector("#grs-user");
   const chartContainer = windowContent.querySelector("#grs-chart");
-  const exportButton = windowContent.querySelector("#grs-export-png");
 
   if (userSelect) {
     userSelect.addEventListener("change", (event) => {
@@ -421,27 +417,178 @@ function attachHandlers(windowContent, selectedUser, dialog) {
   }
 
   if (chartContainer) {
-    drawGoogleChart(chartContainer, selectedUser);
-  }
-
-  if (exportButton && chartContainer) {
-    exportButton.addEventListener("click", async () => {
-      try {
-        const chart = await drawGoogleChart(chartContainer, selectedUser);
-        const imageUri = chart.getImageURI();
-        const a = document.createElement("a");
-        a.href = imageUri;
-        a.download = `gurps-3d6-distribution-${selectedUser || "all-players"}.png`;
-        a.click();
-      } catch {
-        ui.notifications?.warn("Unable to export chart image.");
-      }
-    });
+    drawRollsChart(chartContainer, selectedUser);
   }
 }
 
 export async function showStatsDialog(selectedUser = "") {
-  await loadGoogleCharts();
+  async function sendStatsToChat() {
+    const currentRolls = game.settings.get(MOD_ID, SET_LOG) ?? [];
+    const stats = computeStats(currentRolls, selectedUser);
+    
+    // Calculate global stats for comparison (only when viewing individual user)
+    let globalStats = null;
+    if (selectedUser) {
+      globalStats = computeStats(currentRolls, ""); // All users
+    }
+    
+    // Get actor info for selected user
+    let playerDisplayName = "All Players";
+    let actorImage = "";
+    
+    if (selectedUser) {
+      const actorName = getActorNameForUser(currentRolls, selectedUser);
+      playerDisplayName = actorName || selectedUser;
+      
+      // Get actor image
+      if (actorName) {
+        const actor = game.actors.find(a => a.name === actorName);
+        if (actor?.img) {
+          actorImage = `<img src="${actor.img}" style="width:50px; height:50px; border-radius:50%; margin-right:.75rem; object-fit:cover;" alt="${actorName}">`;
+        }
+      }
+    }
+
+    // Function to get comparison indicator and styling
+    function getComparisonStyling(playerValue, globalValue, metricType) {
+      if (!globalStats) return { style: 'font-weight:600;', indicator: '' };
+      
+      let isHigherBetter = true;
+      if (metricType === 'critFail' || metricType === 'failPct' || metricType === 'failMargin') {
+        isHigherBetter = false;
+      }
+      
+      let color = '';
+      let indicator = '';
+      
+      if (playerValue > globalValue) {
+        color = isHigherBetter ? '#28a745' : '#dc3545'; // green for good, red for bad
+        indicator = isHigherBetter ? '▲' : '▲';
+      } else if (playerValue < globalValue) {
+        color = isHigherBetter ? '#dc3545' : '#28a745'; // red for bad, green for good
+        indicator = isHigherBetter ? '▼' : '▼';
+      }
+      
+      return {
+        style: `font-weight:600; color:${color};`,
+        indicator
+      };
+    }
+    
+    const content = `
+      <div style="border-radius:8px; max-width:420px;">
+        <div style="display:flex; align-items:center; padding:.75rem; border-bottom:2px solid #ccc;">
+          ${actorImage}
+          <div>
+            <h3 style="margin:0; font-size:1.1rem; color:var(--color-text-highlight,#4aa);">
+              <i class="fa-solid fa-chart-simple"></i> GURPS Roll Statistics
+            </h3>
+            <div style="font-size:.9rem; color:#666; margin-top:.25rem;">
+              ${escapeHtml(playerDisplayName)}${selectedUser && playerDisplayName !== selectedUser ? ` (${escapeHtml(selectedUser)})` : ''}
+            </div>
+          </div>
+        </div>
+        
+        ${globalStats ? `
+          <table style="width:100%; font-size:.8rem; line-height:1.3; border-collapse:collapse; ">
+            <thead style="border:none !important; background: #33333356; color: #f4f4f4;">
+  <tr style="border:none !important;">
+    <th style="text-align:left; padding:.4rem; font-weight:600; border:none !important;">Metric</th>
+    <th style="text-align:center; padding:.4rem; font-weight:600; border:none !important;">Player</th>
+    <th style="text-align:center; padding:.4rem; font-weight:600; border:none !important;">Global</th>
+  </tr>
+</thead>
+
+            <tbody>
+              <tr style="border-bottom:1px solid #ccc;">
+                <td style="padding:.3rem; border:none;">Total Rolls</td>
+                <td style="text-align:center; padding:.3rem; font-weight:600; border:none;">${stats.n}</td>
+                <td style="text-align:center; padding:.3rem; color:#666; border:none;">${globalStats.n}</td>
+              </tr>
+              <tr style="border-bottom:1px solid #ccc;">
+                <td style="padding:.3rem; border:none;">Average Roll (3d6)</td>
+                <td style="text-align:center; padding:.3rem; border:none; ${getComparisonStyling(stats.avgTotal, globalStats.avgTotal, 'avgTotal').style}">${getComparisonStyling(stats.avgTotal, globalStats.avgTotal, 'avgTotal').indicator} ${formatValue(stats.avgTotal, 2)}</td>
+                <td style="text-align:center; padding:.3rem; color:#666; border:none;">${formatValue(globalStats.avgTotal, 2)}</td>
+              </tr>
+              <tr style="border-bottom:1px solid #ccc;">
+                <td style="padding:.3rem; border:none;">Success Rate</td>
+                <td style="text-align:center; padding:.3rem; border:none; ${getComparisonStyling(stats.succPct, globalStats.succPct, 'succPct').style}">${getComparisonStyling(stats.succPct, globalStats.succPct, 'succPct').indicator} ${formatValue(stats.succPct, 1)}%</td>
+                <td style="text-align:center; padding:.3rem; color:#666; border:none;">${formatValue(globalStats.succPct, 1)}%</td>
+              </tr>
+              <tr style="border-bottom:1px solid #ccc;">
+                <td style="padding:.3rem; border:none;">Failure Rate</td>
+                <td style="text-align:center; padding:.3rem; border:none; ${getComparisonStyling(stats.failPct, globalStats.failPct, 'failPct').style}">${getComparisonStyling(stats.failPct, globalStats.failPct, 'failPct').indicator} ${formatValue(stats.failPct, 1)}%</td>
+                <td style="text-align:center; padding:.3rem; color:#666; border:none;">${formatValue(globalStats.failPct, 1)}%</td>
+              </tr>
+              <tr style="border-bottom:1px solid #ccc;">
+                <td style="padding:.3rem; border:none;">Avg Success Margin</td>
+                <td style="text-align:center; padding:.3rem; border:none; ${getComparisonStyling(stats.usuallyPassBy, globalStats.usuallyPassBy, 'successMargin').style}">${getComparisonStyling(stats.usuallyPassBy, globalStats.usuallyPassBy, 'successMargin').indicator} ${formatValue(stats.usuallyPassBy, 2)}</td>
+                <td style="text-align:center; padding:.3rem; color:#666; border:none;">${formatValue(globalStats.usuallyPassBy, 2)}</td>
+              </tr>
+              <tr style="border-bottom:1px solid #ccc;">
+                <td style="padding:.3rem; border:none;">Avg Failure Margin</td>
+                <td style="text-align:center; padding:.3rem; border:none; ${getComparisonStyling(stats.usuallyFailBy, globalStats.usuallyFailBy, 'failMargin').style}">${getComparisonStyling(stats.usuallyFailBy, globalStats.usuallyFailBy, 'failMargin').indicator} ${formatValue(stats.usuallyFailBy, 2)}</td>
+                <td style="text-align:center; padding:.3rem; color:#666; border:none;">${formatValue(globalStats.usuallyFailBy, 2)}</td>
+              </tr>
+              <tr style="border-bottom:1px solid #ccc;">
+                <td style="padding:.3rem; border:none;">Critical Successes</td>
+                <td style="text-align:center; padding:.3rem; border:none; ${getComparisonStyling(stats.critSucc, globalStats.critSucc, 'critSucc').style}">${getComparisonStyling(stats.critSucc, globalStats.critSucc, 'critSucc').indicator} ${stats.critSucc}</td>
+                <td style="text-align:center; padding:.3rem; color:#666; border:none;">${globalStats.critSucc}</td>
+              </tr>
+              <tr>
+                <td style="padding:.3rem; border:none;">Critical Failures</td>
+                <td style="text-align:center; padding:.3rem; border:none; ${getComparisonStyling(stats.critFail, globalStats.critFail, 'critFail').style}">${getComparisonStyling(stats.critFail, globalStats.critFail, 'critFail').indicator} ${stats.critFail}</td>
+                <td style="text-align:center; padding:.3rem; color:#666; border:none;">${globalStats.critFail}</td>
+              </tr>
+            </tbody>
+          </table>
+        ` : `
+          <div style="font-size:.8rem; line-height:1.3;">
+            <div style="display:flex; justify-content:space-between; padding:.2rem 0; border-bottom:1px solid #eee;">
+              <span>Total Rolls:</span> 
+              <span style="font-weight:600;">${stats.n}</span>
+            </div>
+            <div style="display:flex; justify-content:space-between; padding:.2rem 0; border-bottom:1px solid #eee;">
+              <span>Average Roll (3d6):</span> 
+              <span style="font-weight:600;">${formatValue(stats.avgTotal, 2)}</span>
+            </div>
+            <div style="display:flex; justify-content:space-between; padding:.2rem 0; border-bottom:1px solid #eee;">
+              <span>Successes:</span> 
+              <span style="font-weight:600;">${stats.succ} (${formatValue(stats.succPct, 1)}%)</span>
+            </div>
+            <div style="display:flex; justify-content:space-between; padding:.2rem 0; border-bottom:1px solid #eee;">
+              <span>Failures:</span> 
+              <span style="font-weight:600;">${stats.fail} (${formatValue(stats.failPct, 1)}%)</span>
+            </div>
+            <div style="display:flex; justify-content:space-between; padding:.2rem 0; border-bottom:1px solid #eee;">
+              <span>Avg Success Margin:</span> 
+              <span style="font-weight:600;">${formatValue(stats.usuallyPassBy, 2)}</span>
+            </div>
+            <div style="display:flex; justify-content:space-between; padding:.2rem 0; border-bottom:1px solid #eee;">
+              <span>Avg Failure Margin:</span> 
+              <span style="font-weight:600;">${formatValue(stats.usuallyFailBy, 2)}</span>
+            </div>
+            <div style="display:flex; justify-content:space-between; padding:.2rem 0; border-bottom:1px solid #eee;">
+              <span>Critical Successes:</span> 
+              <span style="font-weight:600;">${stats.critSucc}</span>
+            </div>
+            <div style="display:flex; justify-content:space-between; padding:.2rem 0;">
+              <span>Critical Failures:</span> 
+              <span style="font-weight:600;">${stats.critFail}</span>
+            </div>
+          </div>
+        `}
+      </div>
+    `;
+    
+    await ChatMessage.create({ 
+      content, 
+      speaker: ChatMessage.getSpeaker() 
+    });
+    
+    ui.notifications?.info("Statistics sent to chat!");
+  }
+
   await foundry.applications.api.DialogV2.wait({
     window: { 
       title: "GURPS Roll Statistics",
@@ -451,7 +598,25 @@ export async function showStatsDialog(selectedUser = "") {
     },
     content: renderStats(selectedUser),
     buttons: [
-      { action: "close", label: "Close", icon: "fa-solid fa-xmark", default: true }
+      { 
+        action: "show-rankings", 
+        label: "Show Rankings", 
+        icon: "fa-solid fa-trophy",
+        callback: async (event, button, dialog) => {
+          dialog.close();
+          setTimeout(() => showComparativeStatsDialog(), 100);
+        }
+      },
+      { 
+        action: "send-to-chat", 
+        label: "Enviar para Chat", 
+        icon: "fa-solid fa-paper-plane",
+        callback: async (event, button, dialog) => {
+          await sendStatsToChat();
+          dialog.close();
+        },
+        default: true
+      }
     ],
     render: (event, dialog) => {
       const wc = dialog.element.querySelector(".window-content");

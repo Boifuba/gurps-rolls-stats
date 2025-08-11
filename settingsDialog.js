@@ -1,5 +1,6 @@
 // settingsDialog.js - Settings dialog UI for GURPS Roll Stats module configuration
-import { MOD_ID } from './constants.js';
+import { MOD_ID, SET_LOG, SET_USE_FIRE_ICONS, SET_USE_FIRE_ANIMATION } from './constants.js';
+import { exportChartAsPNG as exportChart } from './chartUtils.js';
 
 /**
  * Renders the settings dialog HTML content
@@ -101,6 +102,22 @@ function renderSettingsDialog() {
       
       <div class="grs-settings-section">
         <h3 class="grs-settings-title">
+          <i class="fa-solid fa-fire"></i> On Fire System
+        </h3>
+        <div class="grs-checkbox-group">
+          <div class="grs-checkbox-item">
+            <input type="checkbox" id="grs-use-fire-icons" />
+            <label for="grs-use-fire-icons">Show fire icons in chat (🔥)</label>
+          </div>
+          <div class="grs-checkbox-item">
+            <input type="checkbox" id="grs-use-fire-animation" />
+            <label for="grs-use-fire-animation">Enable "On Fire" animations</label>
+          </div>
+        </div>
+      </div>
+      
+      <div class="grs-settings-section">
+        <h3 class="grs-settings-title">
           <i class="fa-solid fa-users"></i> Player Access
         </h3>
         <div class="grs-checkbox-group">
@@ -110,14 +127,11 @@ function renderSettingsDialog() {
           </div>
         </div>
       </div>
-      
-      <div class="grs-settings-section grs-export-section">
-        <h3 class="grs-settings-title">
-          <i class="fa-solid fa-download"></i> Export
-        </h3>
-        <button id="grs-export-chart-btn" class="grs-export-btn" type="button">
+
+      <div class="grs-export-section">
+        <button id="grs-export-png" class="grs-export-btn" type="button">
           <i class="fa-solid fa-image"></i>
-          Export Chart as PNG
+          Export PNG
         </button>
       </div>
     </div>
@@ -141,37 +155,144 @@ export async function showSettingsDialog() {
         action: "save", 
         label: "Save Settings", 
         icon: "fa-solid fa-save",
-        callback: (event, button, dialog) => {
-          // TODO: Implement save logic
-          ui.notifications?.info("Settings saved! (Logic not implemented yet)");
+        callback: async (event, button, dialog) => {
+          // salva as configs
+          try {
+            const root = dialog.element;
+            const hideGM = root.querySelector("#grs-hide-gm-data")?.checked ?? false;
+            const hideIcons = root.querySelector("#grs-hide-chat-icons")?.checked ?? false;
+            const allowPlayers = root.querySelector("#grs-allow-players")?.checked ?? true;
+            const useFireIcons = root.querySelector("#grs-use-fire-icons")?.checked ?? false;
+            const useFireAnimation = root.querySelector("#grs-use-fire-animation")?.checked ?? false;
+
+            await game.settings.set(MOD_ID, "hide-gm-data", hideGM);
+            await game.settings.set(MOD_ID, "hide-chat-icons", hideIcons);
+            await game.settings.set(MOD_ID, "allow-players", allowPlayers);
+            await game.settings.set(MOD_ID, SET_USE_FIRE_ICONS, useFireIcons);
+            await game.settings.set(MOD_ID, SET_USE_FIRE_ANIMATION, useFireAnimation);
+
+            ui.notifications?.info("Settings saved!");
+          } catch (e) {
+            console.error(e);
+            ui.notifications?.error("Failed to save settings.");
+          }
         }
       },
       { 
         action: "close", 
         label: "Cancel", 
-        icon: "fa-solid fa-xmark", 
-        default: true 
+        icon: "fa-solid fa-xmark"
       }
     ],
     render: (event, dialog) => {
       const wc = dialog.element.querySelector(".window-content");
-      if (wc) {
-        wc.style.paddingTop = "40px";
-        wc.style.overflowY = "auto";
-        wc.style.maxHeight = "70vh";
-      }
-      
-      // Attach event handlers (without logic for now)
-      const exportBtn = wc.querySelector("#grs-export-chart-btn");
-      if (exportBtn) {
-        exportBtn.addEventListener("click", () => {
-          // TODO: Implement export logic
-          ui.notifications?.info("Export chart functionality not implemented yet");
-        });
-      }
-      
-      // TODO: Load current settings values into checkboxes
-      // TODO: Add change event listeners for checkboxes
+      if (wc) wc.style.paddingTop = "40px";
+
+      // carrega valores atuais
+      dialog.element.querySelector("#grs-hide-gm-data").checked = !!game.settings.get(MOD_ID, "hide-gm-data");
+      dialog.element.querySelector("#grs-hide-chat-icons").checked = !!game.settings.get(MOD_ID, "hide-chat-icons");
+      dialog.element.querySelector("#grs-allow-players").checked = !!game.settings.get(MOD_ID, "allow-players");
+      dialog.element.querySelector("#grs-use-fire-icons").checked = !!game.settings.get(MOD_ID, SET_USE_FIRE_ICONS);
+      dialog.element.querySelector("#grs-use-fire-animation").checked = !!game.settings.get(MOD_ID, SET_USE_FIRE_ANIMATION);
+
+      // liga botão de export
+      const btn = dialog.element.querySelector("#grs-export-png");
+      if (btn) btn.addEventListener("click", exportChartAsPNG);
     }
   });
+}
+
+/**
+ * Exports the chart as PNG by creating a temporary hidden container
+ */
+export async function exportChartAsPNG() {
+  // Export chart for all players
+  await exportChart("", "gurps-3d6-distribution-all-players.png");
+}
+
+/**
+ * Exports roll data as CSV
+ */
+function exportDataAsCSV() {
+  try {
+    const currentRolls = game.settings.get(MOD_ID, SET_LOG) ?? [];
+    
+    if (currentRolls.length === 0) {
+      ui.notifications?.warn("No roll data available to export.");
+      return;
+    }
+    
+    // Create CSV header
+    const headers = ['Timestamp', 'User', 'Actor', 'Formula', 'Total', 'Dice', 'Success', 'Margin', 'Flavor'];
+    
+    // Create CSV rows
+    const rows = currentRolls.map(roll => [
+      roll.timestamp || '',
+      roll.user || '',
+      roll.actor || '',
+      roll.formula || '',
+      roll.total || '',
+      Array.isArray(roll.dice) ? roll.dice.join(',') : '',
+      roll.success !== null ? roll.success : '',
+      roll.margin !== null ? roll.margin : '',
+      (roll.flavor || '').replace(/"/g, '""') // Escape quotes
+    ]);
+    
+    // Combine headers and rows
+    const csvContent = [headers, ...rows]
+      .map(row => row.map(field => `"${field}"`).join(','))
+      .join('\n');
+    
+    // Create and download file
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'gurps-roll-data.csv';
+    a.click();
+    URL.revokeObjectURL(url);
+    
+    ui.notifications?.info("CSV data exported successfully!");
+    
+  } catch (error) {
+    console.error("CSV export error:", error);
+    ui.notifications?.error("Failed to export CSV data. Please try again.");
+  }
+}
+
+/**
+ * Exports roll data as JSON
+ */
+function exportDataAsJSON() {
+  try {
+    const currentRolls = game.settings.get(MOD_ID, SET_LOG) ?? [];
+    
+    if (currentRolls.length === 0) {
+      ui.notifications?.warn("No roll data available to export.");
+      return;
+    }
+    
+    // Create JSON with metadata
+    const exportData = {
+      exportDate: new Date().toISOString(),
+      totalRolls: currentRolls.length,
+      rolls: currentRolls
+    };
+    
+    // Create and download file
+    const jsonContent = JSON.stringify(exportData, null, 2);
+    const blob = new Blob([jsonContent], { type: 'application/json;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'gurps-roll-data.json';
+    a.click();
+    URL.revokeObjectURL(url);
+    
+    ui.notifications?.info("JSON data exported successfully!");
+    
+  } catch (error) {
+    console.error("JSON export error:", error);
+    ui.notifications?.error("Failed to export JSON data. Please try again.");
+  }
 }
