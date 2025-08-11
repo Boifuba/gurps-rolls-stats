@@ -3,6 +3,7 @@
 
 import { MOD_ID, SET_LOG, SET_ACTIVE } from './constants.js';
 import { showStatsDialog, showComparativeStatsDialog } from './statsDialog.js';
+import { showSettingsDialog } from './settingsDialog.js';
 import { isRollMessage, parseMessage } from './rollParser.js';
 
 /* ---------------------- Helpers ---------------------- */
@@ -75,10 +76,70 @@ Hooks.once("init", async () => {
   // Active toggle (world, visible)
   game.settings.register(MOD_ID, SET_ACTIVE, {
     name: "Logger Active",
+    hint: "Enable or disable roll statistics logging",
     scope: "world",
     config: true,
     type: Boolean,
     default: true
+  });
+
+  // Display Options
+  game.settings.register(MOD_ID, "hide-gm-data", {
+    name: "Hide GM Data",
+    hint: "Don't show GM data in statistics",
+    scope: "world",
+    config: true,
+    type: Boolean,
+    default: false
+  });
+
+  game.settings.register(MOD_ID, "hide-chat-icons", {
+    name: "Hide Chat Icons",
+    hint: "Don't show icons in chat log",
+    scope: "world", 
+    config: true,
+    type: Boolean,
+    default: false
+  });
+
+  // Player Access
+  game.settings.register(MOD_ID, "allow-players", {
+    name: "Allow Players Access",
+    hint: "Allow players to view the module",
+    scope: "world",
+    config: true,
+    type: Boolean,
+    default: true
+  });
+
+  // Export Settings
+  game.settings.register(MOD_ID, "export-format", {
+    name: "Export Format",
+    hint: "Choose the default export format for charts",
+    scope: "world",
+    config: true,
+    type: String,
+    choices: {
+      "png": "PNG Image",
+      "csv": "CSV Data",
+      "json": "JSON Data"
+    },
+    default: "png"
+  });
+
+  game.settings.register(MOD_ID, "chart-theme", {
+    name: "Chart Theme",
+    hint: "Choose the chart color theme",
+    scope: "world",
+    config: true,
+    type: String,
+    choices: {
+      "foundry": "Foundry Colors",
+      "classic": "Classic Blue",
+      "dark": "Dark Theme",
+      "colorful": "Colorful"
+    },
+    default: "foundry"
   });
 
   // Chat commands
@@ -101,6 +162,11 @@ Hooks.once("init", async () => {
         ui.notifications?.info("Roll statistics cleared.");
         showStatsDialog();
       });
+      return false; // não mostra no chat
+    }
+
+    if (command === "/stats settings") {
+      showSettingsDialog();
       return false; // não mostra no chat
     }
 

@@ -336,6 +336,19 @@ function renderStats(selectedUser) {
   const uniqueUsers = [...new Set(currentRolls.map(r => r.user))].sort();
   const stats = computeStats(currentRolls, selectedUser);
 
+  // Check if there's no data
+  const hasData = currentRolls.length > 0;
+  const noDataMessage = hasData ? '' : `
+    <div style="background: var(--color-bg-option, #f8f9fa); border: 1px solid #ddd; border-radius: 6px; padding: 1rem; margin-bottom: 1rem; text-align: center;">
+      <p style="margin: 0; color: #666; font-style: italic;">
+        <i class="fa-solid fa-info-circle"></i> No rolls recorded yet.
+      </p>
+      <p style="margin: 0.5rem 0 0 0; color: #666; font-size: 0.9rem;">
+        Statistics and charts will appear here when players start making 3d6 rolls.
+      </p>
+    </div>
+  `;
+
   const faceCountRow = [1,2,3,4,5,6].map(face => `<td>${stats.diceCount?.[face] ?? 0}</td>`).join("");
   const sumHeaders = Array.from({ length: 16 }, (_, i) => `<th>${i + 3}</th>`).join("");
   const sumCells = Array.from({ length: 16 }, (_, i) => `<td>${stats.totals[i + 3] || 0}</td>`).join("");
@@ -375,6 +388,7 @@ function renderStats(selectedUser) {
         <strong>Roll Distribution (3d6 Totals)</strong>
         <button id="grs-export-png" type="button"><i class="fa-solid fa-image"></i> Export PNG</button>
       </div>
+      ${noDataMessage}
       <div id="grs-chart" style="width:100%; height:300px; max-width:100%;"></div>
 
       <div>
