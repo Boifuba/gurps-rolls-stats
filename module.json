@@ -1,7 +1,7 @@
 {
   "id": "gurps-rolls-stats",
   "title": "GURPS Rolls Stats",
-  "description": "Collects and summarizes 3d6 roll statistics for GURPS games.",
+  "description": "Collects and summarizes 3d6 roll statistics for GURPS games and put you on fire.",
   "authors": [
     {
       "name": "Boifubá",
@@ -10,24 +10,36 @@
       "flags": {}
     }
   ],
-  "version": "0.0.2",
+  "version": "1.0.0",
   "compatibility": {
     "minimum": "13",
     "verified": "13",
     "maximum": "13"
   },
+  "relationships": {
+    "requires": [
+      {
+        "id": "socketlib",
+        "type": "module",
+        "compatibility": {}
+      }
+    ]
+  },
   "url": "https://github.com/Boifuba/gurps-rolls-stats",
-  "manifest": "https://github.com/Boifuba/gurps-rolls-stats/releases/download/0.0.2/module.json",
-  "download": "https://github.com/Boifuba/gurps-rolls-stats/releases/download/0.0.2/gurps-rolls-stats.zip",
- "esmodules": [
-   "main.js", 
-   "constants.js", 
-   "utils.js", 
-   "rollParser.js", 
-   "statsCalculator.js", 
-   "chartUtils.js",
-   "statsDialog.js", 
-   "chart-mini.js",
-   "onFireEffects.js"
- ]
+  "manifest": "https://github.com/Boifuba/gurps-rolls-stats/releases/download/1.0.0/module.json",
+  "download": "https://github.com/Boifuba/gurps-rolls-stats/releases/download/1.0.0/gurps-rolls-stats.zip",
+  "esmodules": [
+    "main.js", 
+    "constants.js", 
+    "utils.js", 
+    "rollParser.js", 
+    "statsCalculator.js", 
+    "chartUtils.js",
+    "statsDialog.js", 
+    "chart-mini.js",
+    "settingsDialog.js",
+    "flameEffects.js",
+    "unluckyEffects.js",
+    "electricEffects.js"
+  ]
 }

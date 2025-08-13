@@ -1,5 +1,5 @@
 // settingsDialog.js - Settings dialog UI for GURPS Roll Stats module configuration
-import { MOD_ID, SET_LOG, SET_USE_FIRE_ICONS, SET_USE_FIRE_ANIMATION } from './constants.js';
+import { MOD_ID, SET_LOG, SET_USE_EFFECT_ICONS, SET_USE_EFFECT_ANIMATION } from './constants.js';
 import { exportChartAsPNG as exportChart } from './chartUtils.js';
 
 /**
@@ -162,14 +162,14 @@ export async function showSettingsDialog() {
             const hideGM = root.querySelector("#grs-hide-gm-data")?.checked ?? false;
             const hideIcons = root.querySelector("#grs-hide-chat-icons")?.checked ?? false;
             const allowPlayers = root.querySelector("#grs-allow-players")?.checked ?? true;
-            const useFireIcons = root.querySelector("#grs-use-fire-icons")?.checked ?? false;
-            const useFireAnimation = root.querySelector("#grs-use-fire-animation")?.checked ?? false;
+            const useEffectIcons = root.querySelector("#grs-use-fire-icons")?.checked ?? false;
+            const useEffectAnimation = root.querySelector("#grs-use-fire-animation")?.checked ?? false;
 
             await game.settings.set(MOD_ID, "hide-gm-data", hideGM);
             await game.settings.set(MOD_ID, "hide-chat-icons", hideIcons);
             await game.settings.set(MOD_ID, "allow-players", allowPlayers);
-            await game.settings.set(MOD_ID, SET_USE_FIRE_ICONS, useFireIcons);
-            await game.settings.set(MOD_ID, SET_USE_FIRE_ANIMATION, useFireAnimation);
+            await game.settings.set(MOD_ID, SET_USE_EFFECT_ICONS, useEffectIcons);
+            await game.settings.set(MOD_ID, SET_USE_EFFECT_ANIMATION, useEffectAnimation);
 
             ui.notifications?.info("Settings saved!");
           } catch (e) {
@@ -192,8 +192,8 @@ export async function showSettingsDialog() {
       dialog.element.querySelector("#grs-hide-gm-data").checked = !!game.settings.get(MOD_ID, "hide-gm-data");
       dialog.element.querySelector("#grs-hide-chat-icons").checked = !!game.settings.get(MOD_ID, "hide-chat-icons");
       dialog.element.querySelector("#grs-allow-players").checked = !!game.settings.get(MOD_ID, "allow-players");
-      dialog.element.querySelector("#grs-use-fire-icons").checked = !!game.settings.get(MOD_ID, SET_USE_FIRE_ICONS);
-      dialog.element.querySelector("#grs-use-fire-animation").checked = !!game.settings.get(MOD_ID, SET_USE_FIRE_ANIMATION);
+      dialog.element.querySelector("#grs-use-fire-icons").checked = !!game.settings.get(MOD_ID, SET_USE_EFFECT_ICONS);
+      dialog.element.querySelector("#grs-use-fire-animation").checked = !!game.settings.get(MOD_ID, SET_USE_EFFECT_ANIMATION);
 
       // liga botão de export
       const btn = dialog.element.querySelector("#grs-export-png");

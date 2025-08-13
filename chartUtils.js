@@ -123,7 +123,6 @@ export async function exportChartAsPNG(userFilter = "", filename = "gurps-3d6-di
     ui.notifications?.info("Chart exported successfully!");
     
   } catch (error) {
-    console.error("Export error:", error);
     ui.notifications?.error("Failed to export chart. Please try again.");
   }
 }

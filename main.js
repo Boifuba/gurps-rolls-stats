@@ -1,25 +1,64 @@
 // main.js - GURPS Roll Stats (v13) - Main module entry point
 // Handles settings registration, UI integration, and roll logging
 
-import { MOD_ID, SET_LOG, SET_ACTIVE, SET_USE_FIRE_ICONS, SET_USE_FIRE_ANIMATION, SET_FIRE_COUNTERS, SET_ONFIRE_USERS } from './constants.js';
+import { MOD_ID, SET_LOG, SET_ACTIVE, SET_USE_EFFECT_ICONS, SET_USE_EFFECT_ANIMATION, SET_EFFECT_COUNTERS, SET_EFFECT_ACTIVE_USERS, SET_EFFECT_THEME, SET_PLAYER_SHOW_COUNTERS, SET_PLAYER_SHOW_ANIMATIONS } from './constants.js';
+import { SET_PLAYER_SHOW_CHAT_CONTROLS, SET_PLAYER_PAUSE_ROLLS, SET_PLAYER_HIDE_EFFECT_EMOJIS, SET_FULL_BAR_MAX_POINTS, SET_GLOBAL_ACTIVE_TEXT_FALLBACK, SET_PLAYER_UI_CUSTOM_TEXT, USER_CUSTOM_ACTIVE_TEXT_FLAG_KEY } from './constants.js';
 import { showStatsDialog, showComparativeStatsDialog } from './statsDialog.js';
 import { showSettingsDialog, exportChartAsPNG } from './settingsDialog.js';
 import { isRollMessage, parseMessage } from './rollParser.js';
-import { triggerOnFireAnimation } from './onFireEffects.js';
+import * as effectManager from './effectManager.js';
+
+// Module-level socket instance
+let gurpsRollStatsSocket = null;
 
 /* ---------------------- Helpers ---------------------- */
 
 function injectControls(root) {
   try {
-    const controlsRoot = root.querySelector?.("#chat-controls");
+    // Check if user wants to show chat controls (applies to both GM and players)
+    if (!game.settings.get(MOD_ID, SET_PLAYER_SHOW_CHAT_CONTROLS)) {
+      return;
+    }
+
+    // Try multiple selectors to find the chat controls area
+    let controlsRoot = root.querySelector?.("#chat-controls");
+    
+    // Fallback: try to find it in the document if not found in root
+    if (!controlsRoot) {
+      controlsRoot = document.querySelector("#chat-controls");
+    }
+    
+    // Another fallback: try to find the chat form area
+    if (!controlsRoot) {
+      controlsRoot = root.querySelector?.("#chat-form");
+      if (!controlsRoot) {
+        controlsRoot = document.querySelector("#chat-form");
+      }
+    }
+    
     if (!controlsRoot) return;
 
-    const controlButtons = controlsRoot.querySelector(".control-buttons");
-    if (!controlButtons) return;
+    // Try to find control-buttons, or create it if it doesn't exist
+    let controlButtons = controlsRoot.querySelector(".control-buttons");
+    
+    if (!controlButtons) {
+      // Try alternative selectors
+      controlButtons = controlsRoot.querySelector(".flexrow");
+      if (!controlButtons) {
+        controlButtons = controlsRoot.querySelector("button")?.parentElement;
+      }
+      
+      // If still not found, create the control buttons container
+      if (!controlButtons) {
+        controlButtons = document.createElement("div");
+        controlButtons.className = "control-buttons flexrow";
+        controlsRoot.appendChild(controlButtons);
+      }
+    }
 
     if (controlButtons.querySelector('[data-action="gurps-stats"]')) return;
 
-    // Botão Stats
+    // Stats Button
     const statsBtn = document.createElement("button");
     statsBtn.type = "button";
     statsBtn.className = "ui-control icon fa-solid fa-chart-simple";
@@ -29,27 +68,72 @@ function injectControls(root) {
     statsBtn.setAttribute("data-tooltip", "Open Statistics");
     statsBtn.addEventListener("click", () => showStatsDialog());
 
-    // Botão Toggle ON/OFF
-    const isActive = game.settings.get(MOD_ID, SET_ACTIVE);
+    // Toggle ON/OFF Button - Different behavior for GM vs Players
     const toggleBtn = document.createElement("button");
     toggleBtn.type = "button";
-    toggleBtn.className = `ui-control icon fa-solid ${isActive ? "fa-record-vinyl" : "fa-pause"}`;
     toggleBtn.dataset.action = "gurps-logger-toggle";
+    
+    let isRecording, titleText, tooltipText;
+    
+    if (game.user.isGM) {
+      // GM controls global recording
+      isRecording = game.settings.get(MOD_ID, SET_ACTIVE);
+      titleText = isRecording ? "Global recording ON - Click to pause all" : "Global recording OFF - Click to resume all";
+      tooltipText = titleText;
+    } else {
+      // Players control their own recording (only if global is active)
+      const globalActive = game.settings.get(MOD_ID, SET_ACTIVE);
+      const playerPaused = game.settings.get(MOD_ID, SET_PLAYER_PAUSE_ROLLS);
+      isRecording = globalActive && !playerPaused;
+      
+      if (!globalActive) {
+        titleText = "Recording disabled by GM";
+        tooltipText = titleText;
+      } else {
+        titleText = playerPaused ? "Your rolls paused - Click to resume" : "Recording your rolls - Click to pause";
+        tooltipText = titleText;
+      }
+    }
+    
+    toggleBtn.className = `ui-control icon fa-solid ${isRecording ? "fa-record-vinyl" : "fa-pause"}`;
     toggleBtn.setAttribute("aria-label", "Toggle Roll Logger");
-    toggleBtn.setAttribute("title", isActive ? "Recording rolls - Click to pause" : "Recording paused - Click to resume");
-    toggleBtn.setAttribute("data-tooltip", isActive ? "Recording rolls - Click to pause" : "Recording paused - Click to resume");
+    toggleBtn.setAttribute("title", titleText);
+    toggleBtn.setAttribute("data-tooltip", tooltipText);
 
     toggleBtn.addEventListener("click", async () => {
-      const next = !game.settings.get(MOD_ID, SET_ACTIVE);
-      await game.settings.set(MOD_ID, SET_ACTIVE, next);
-
-      toggleBtn.classList.remove("fa-record-vinyl", "fa-pause");
-      toggleBtn.classList.add(next ? "fa-record-vinyl" : "fa-pause");
-      const tip = next ? "Recording rolls - Click to pause" : "Recording paused - Click to resume";
-      toggleBtn.setAttribute("title", tip);
-      toggleBtn.setAttribute("data-tooltip", tip);
-
-      ui.notifications?.info(`GURPS Roll Stats: ${next ? "ON" : "OFF"}`);
+      if (game.user.isGM) {
+        // GM toggles global recording
+        const next = !game.settings.get(MOD_ID, SET_ACTIVE);
+        await game.settings.set(MOD_ID, SET_ACTIVE, next);
+        
+        toggleBtn.classList.remove("fa-record-vinyl", "fa-pause");
+        toggleBtn.classList.add(next ? "fa-record-vinyl" : "fa-pause");
+        const tip = next ? "Global recording ON - Click to pause all" : "Global recording OFF - Click to resume all";
+        toggleBtn.setAttribute("title", tip);
+        toggleBtn.setAttribute("data-tooltip", tip);
+        
+        ui.notifications?.info(`GURPS Roll Stats (Global): ${next ? "ON" : "OFF"}`);
+      } else {
+        // Player toggles their own recording
+        const globalActive = game.settings.get(MOD_ID, SET_ACTIVE);
+        if (!globalActive) {
+          ui.notifications?.warn("Recording is disabled by GM");
+          return;
+        }
+        
+        const currentPlayerPaused = game.settings.get(MOD_ID, SET_PLAYER_PAUSE_ROLLS);
+        const nextPlayerPaused = !currentPlayerPaused;
+        await game.settings.set(MOD_ID, SET_PLAYER_PAUSE_ROLLS, nextPlayerPaused);
+        
+        const isNowRecording = !nextPlayerPaused;
+        toggleBtn.classList.remove("fa-record-vinyl", "fa-pause");
+        toggleBtn.classList.add(isNowRecording ? "fa-record-vinyl" : "fa-pause");
+        const tip = nextPlayerPaused ? "Your rolls paused - Click to resume" : "Recording your rolls - Click to pause";
+        toggleBtn.setAttribute("title", tip);
+        toggleBtn.setAttribute("data-tooltip", tip);
+        
+        ui.notifications?.info(`Your Roll Recording: ${isNowRecording ? "ON" : "OFF"}`);
+      }
     });
 
     controlButtons.prepend(toggleBtn);
@@ -57,168 +141,6 @@ function injectControls(root) {
   } catch (err) {
     console.error(`${MOD_ID} injectControls error:`, err);
   }
-}
-
-/* ---------------------- User ID Utilities ---------------------- */
-
-/**
- * Ensures we always get a clean string user ID
- * @param {string|User|Object} userId - User ID or User object
- * @returns {string} Clean string user ID
- */
-function normalizeUserId(userId) {
-  if (typeof userId === 'string') {
-    return userId;
-  }
-  if (typeof userId === 'object' && userId !== null) {
-    return userId.id || userId._id || String(userId);
-  }
-  return String(userId);
-}
-
-/**
- * Cleans up corrupted fire counter data with "[object Object]" keys
- */
-async function cleanupCorruptedFireData() {
-  const counters = game.settings.get(MOD_ID, SET_FIRE_COUNTERS) ?? {};
-  const onFireUsers = game.settings.get(MOD_ID, SET_ONFIRE_USERS) ?? {};
-  
-  let countersChanged = false;
-  let onFireChanged = false;
-  
-  // Check for corrupted keys in counters
-  if (counters.hasOwnProperty('[object Object]')) {
-    console.warn(`${MOD_ID}: Found corrupted fire counter data, cleaning up...`);
-    delete counters['[object Object]'];
-    countersChanged = true;
-  }
-  
-  // Check for corrupted keys in onFire users
-  if (onFireUsers.hasOwnProperty('[object Object]')) {
-    console.warn(`${MOD_ID}: Found corrupted onFire user data, cleaning up...`);
-    delete onFireUsers['[object Object]'];
-    onFireChanged = true;
-  }
-  
-  // Save cleaned data
-  if (countersChanged) {
-    await game.settings.set(MOD_ID, SET_FIRE_COUNTERS, counters);
-  }
-  if (onFireChanged) {
-    await game.settings.set(MOD_ID, SET_ONFIRE_USERS, onFireUsers);
-  }
-  
-  if (countersChanged || onFireChanged) {
-    console.log(`${MOD_ID}: Corrupted fire data cleaned up successfully`);
-    ui.notifications?.info("Fire system data cleaned up. Please recheck your fire status.");
-  }
-}
-
-/* ---------------------- Fire System Helpers ---------------------- */
-
-// GM-only functions that actually update the settings
-async function handleUpdateFireCounterGM(userId, change) {
-  userId = normalizeUserId(userId);
-  console.log(`${MOD_ID}: [DEBUG] handleUpdateFireCounterGM - userId: ${userId}, change: ${change}`);
-  
-  const counters = game.settings.get(MOD_ID, SET_FIRE_COUNTERS) ?? {};
-  const currentCount = counters[userId] ?? 0;
-  const newCount = Math.max(0, Math.min(10, currentCount + change)); // Clamp entre 0 e 10
-  
-  console.log(`${MOD_ID}: [DEBUG] Fire counter update - currentCount: ${currentCount}, newCount: ${newCount}`);
-  
-  counters[userId] = newCount;
-  await game.settings.set(MOD_ID, SET_FIRE_COUNTERS, counters);
-  
-  // Check if user reaches 10 fire icons (becomes "on fire")
-  const onFireUsers = game.settings.get(MOD_ID, SET_ONFIRE_USERS) ?? {};
-  const wasOnFire = onFireUsers[userId] ?? false;
-  
-  if (newCount === 10 && !wasOnFire) {
-    console.log(`${MOD_ID}: [DEBUG] User ${userId} reached 10 fire icons, setting ON FIRE`);
-    onFireUsers[userId] = true;
-    await game.settings.set(MOD_ID, SET_ONFIRE_USERS, onFireUsers);
-    
-    // Trigger animation if enabled
-    if (game.settings.get(MOD_ID, SET_USE_FIRE_ANIMATION)) {
-      triggerOnFireAnimation(userId);
-    }
-    
-    // Notify all clients about the "on fire" status
-    const user = game.users.get(userId);
-    ui.notifications?.info(`🔥 ${user?.name || 'Player'} is ON FIRE! 🔥`);
-  } else if (newCount < 10 && wasOnFire) {
-    console.log(`${MOD_ID}: [DEBUG] User ${userId} dropped below 10 fire icons, no longer ON FIRE`);
-    // User dropped below 10, no longer on fire
-    delete onFireUsers[userId];
-    await game.settings.set(MOD_ID, SET_ONFIRE_USERS, onFireUsers);
-  }
-  
-  return newCount;
-}
-
-async function handleCriticalSuccessGM(userId) {
-  userId = normalizeUserId(userId);
-  console.log(`${MOD_ID}: [DEBUG] handleCriticalSuccessGM - userId: ${userId}`);
-  
-  // Critical success: set to 10 (on fire)
-  const counters = game.settings.get(MOD_ID, SET_FIRE_COUNTERS) ?? {};
-  const onFireUsers = game.settings.get(MOD_ID, SET_ONFIRE_USERS) ?? {};
-  
-  counters[userId] = 10;
-  onFireUsers[userId] = true;
-  
-  await game.settings.set(MOD_ID, SET_FIRE_COUNTERS, counters);
-  await game.settings.set(MOD_ID, SET_ONFIRE_USERS, onFireUsers);
-  
-  console.log(`${MOD_ID}: [DEBUG] Critical success processed - user ${userId} is now ON FIRE`);
-  
-  // Trigger animation if enabled
-  if (game.settings.get(MOD_ID, SET_USE_FIRE_ANIMATION)) {
-    triggerOnFireAnimation(userId);
-  }
-  
-  // Notify all clients about the "on fire" status
-  const user = game.users.get(userId);
-  ui.notifications?.info(`🔥 ${user?.name || 'Player'} is ON FIRE! 🔥`);
-}
-
-async function handleFireLossGM(userId, isFailure, isCriticalFailure) {
-  userId = normalizeUserId(userId);
-  console.log(`${MOD_ID}: [DEBUG] handleFireLossGM - userId: ${userId}, isFailure: ${isFailure}, isCriticalFailure: ${isCriticalFailure}`);
-  
-  const onFireUsers = game.settings.get(MOD_ID, SET_ONFIRE_USERS) ?? {};
-  const isOnFire = onFireUsers[userId] ?? false;
-  
-  if (isCriticalFailure) {
-    console.log(`${MOD_ID}: [DEBUG] Critical failure - clearing all fire for user ${userId}`);
-    // Critical failure - zero all fire
-    await clearUserFireGM(userId);
-  } else if (isOnFire && isFailure) {
-    console.log(`${MOD_ID}: [DEBUG] User ${userId} is on fire and failed - losing 5 fire icons`);
-    // User is on fire and failed - lose 5 fire icons
-    await handleUpdateFireCounterGM(userId, -5);
-  } else if (isFailure) {
-    console.log(`${MOD_ID}: [DEBUG] Regular failure for user ${userId} - losing 3 fire icons`);
-    // Regular failure - lose 3 fire icons
-    await handleUpdateFireCounterGM(userId, -3);
-  }
-}
-
-async function clearUserFireGM(userId) {
-  userId = normalizeUserId(userId);
-  console.log(`${MOD_ID}: [DEBUG] clearUserFireGM - userId: ${userId}`);
-  
-  const counters = game.settings.get(MOD_ID, SET_FIRE_COUNTERS) ?? {};
-  const onFireUsers = game.settings.get(MOD_ID, SET_ONFIRE_USERS) ?? {};
-  
-  counters[userId] = 0;
-  delete onFireUsers[userId];
-  
-  await game.settings.set(MOD_ID, SET_FIRE_COUNTERS, counters);
-  await game.settings.set(MOD_ID, SET_ONFIRE_USERS, onFireUsers);
-  
-  console.log(`${MOD_ID}: [DEBUG] Fire cleared for user ${userId}`);
 }
 
 async function updateRollLogGM(rollEntry) {
@@ -230,93 +152,84 @@ async function updateRollLogGM(rollEntry) {
   await game.settings.set(MOD_ID, SET_LOG, existingRolls);
 }
 
-// Player-facing functions that either execute directly (if GM) or send socket requests
-async function updateFireCounter(userId, change) {
-  userId = normalizeUserId(userId);
-  
-  if (game.user.isGM) {
-    return await handleUpdateFireCounterGM(userId, change);
-  } else {
-    // Send request to GM via socket
-    game.socket.emit(`module.${MOD_ID}`, {
-      action: "updateFireCounter",
-      userId: userId,
-      change: change
-    });
-    
-    // Return current count for immediate feedback (may not be perfectly accurate)
-    const counters = game.settings.get(MOD_ID, SET_FIRE_COUNTERS) ?? {};
-    return Math.max(0, Math.min(10, (counters[userId] ?? 0) + change));
-  }
-}
-
-async function handleCriticalSuccess(userId) {
-  userId = normalizeUserId(userId);
-  
-  if (game.user.isGM) {
-    await handleCriticalSuccessGM(userId);
-  } else {
-    // Send request to GM via socket
-    game.socket.emit(`module.${MOD_ID}`, {
-      action: "handleCriticalSuccess",
-      userId: userId
-    });
-  }
-}
-
-async function handleFireLoss(userId, isFailure, isCriticalFailure) {
-  userId = normalizeUserId(userId);
-  
-  if (game.user.isGM) {
-    await handleFireLossGM(userId, isFailure, isCriticalFailure);
-  } else {
-    // Send request to GM via socket
-    game.socket.emit(`module.${MOD_ID}`, {
-      action: "handleFireLoss",
-      userId: userId,
-      isFailure: isFailure,
-      isCriticalFailure: isCriticalFailure
-    });
-  }
-}
-
-async function clearUserFire(userId) {
-  userId = normalizeUserId(userId);
-  
-  if (game.user.isGM) {
-    await clearUserFireGM(userId);
-  } else {
-    // Send request to GM via socket
-    game.socket.emit(`module.${MOD_ID}`, {
-      action: "clearUserFire",
-      userId: userId
-    });
-  }
-}
-
 /* ---------------------- Module Settings Registration ---------------------- */
 
 Hooks.once("init", async () => {
-  // Register socket listener for fire system updates (GM only)
-  game.socket.on(`module.${MOD_ID}`, (data) => {
-    if (!game.user.isGM) return; // Only GM processes these requests
+  console.log(`${MOD_ID}: Initializing module...`);
+  
+  // Register socketlib handlers
+  Hooks.once("socketlib.ready", () => {
+    console.log(`${MOD_ID}: Registering socketlib handlers...`);
     
-    switch (data.action) {
-      case "updateFireCounter":
-        handleUpdateFireCounterGM(data.userId, data.change);
-        break;
-      case "handleCriticalSuccess":
-        handleCriticalSuccessGM(data.userId);
-        break;
-      case "handleFireLoss":
-        handleFireLossGM(data.userId, data.isFailure, data.isCriticalFailure);
-        break;
-      case "clearUserFire":
-        clearUserFireGM(data.userId);
-        break;
-      case "updateRollLog":
-        updateRollLogGM(data.rollEntry);
-        break;
+    // Register socket handlers for effect system and get the socket instance
+    const socketlibModule = game.modules.get('socketlib');
+    if (socketlibModule) {
+      gurpsRollStatsSocket = socketlibModule.registerModule(MOD_ID, {
+        // GM-only handlers for data updates
+        updateEffectCounter: effectManager.handleUpdateEffectCounterGM,
+        handleCriticalSuccess: effectManager.handleCriticalSuccessGM,
+        handleEffectLoss: effectManager.handleEffectLossGM,
+        clearUserEffect: effectManager.clearUserEffectGM,
+        updateRollLog: updateRollLogGM,
+        
+        // Client handler for visual effects (executed on all clients)
+        triggerVisualEffectForClient: (userId, effectName) => {
+          console.log(`${MOD_ID}: [SOCKETLIB] Triggering visual effect for user ${userId} with theme ${effectName}`);
+          // Only show notification, don't re-apply effects to old messages
+          const user = game.users.get(userId);
+          const effect = effectManager.getEffect(effectName);
+          if (user && effect) {
+            // Only show notification, don't re-apply effects to old messages
+            const user = game.users.get(userId);
+            const effect = effectManager.getEffect(effectName);
+            if (user && effect) {
+              ui.notifications?.info(`${effect.emoji} ${user.name} is ${effect.activeText}! ${effect.emoji}`, { permanent: false });
+            }
+          }
+        },
+        
+        // Broadcast setting changes to all clients
+        broadcastEffectUpdate: (userId, effectName) => {
+          console.log(`${MOD_ID}: [SOCKETLIB] Broadcasting effect update for user ${userId} with theme ${effectName}`);
+          // Settings updates no longer re-apply effects to old messages
+          console.log(`${MOD_ID}: [SOCKETLIB] Effect update broadcast received - affects new messages only`);
+        }
+      });
+      
+      // Provide the socket instance to effectManager
+      effectManager.setSocketLibInstance(gurpsRollStatsSocket);
+      
+      console.log(`${MOD_ID}: Socketlib handlers registered successfully`);
+    } else {
+      console.error(`${MOD_ID}: SocketLib module not found!`);
+    }
+  });
+
+  // Register socketlib handlers (legacy fallback)
+  Hooks.once("socketlib.ready", () => {
+    // This hook is kept for compatibility but the main registration happens above
+    if (!gurpsRollStatsSocket) {
+      console.warn(`${MOD_ID}: Fallback socketlib registration - this should not happen`);
+      
+      const socketlibModule = game.modules.get('socketlib');
+      if (socketlibModule) {
+        gurpsRollStatsSocket = socketlibModule.registerModule(MOD_ID, {
+      // GM-only handlers for data updates
+      updateEffectCounter: effectManager.handleUpdateEffectCounterGM,
+      handleCriticalSuccess: effectManager.handleCriticalSuccessGM,
+      handleEffectLoss: effectManager.handleEffectLossGM,
+      clearUserEffect: effectManager.clearUserEffectGM,
+      updateRollLog: updateRollLogGM,
+      
+      // Client handler for visual effects (executed on all clients)
+      triggerVisualEffectForClient: (userId, effectName) => {
+        console.log(`${MOD_ID}: [SOCKETLIB] Triggering visual effect for user ${userId} with theme ${effectName}`);
+        effectManager.applyEffectToUserMessages(userId, effectName);
+      }
+        });
+        
+        effectManager.setSocketLibInstance(gurpsRollStatsSocket);
+      }
     }
   });
 
@@ -329,20 +242,44 @@ Hooks.once("init", async () => {
     default: []
   });
 
+  // Register all settings
+  registerSettings();
+
+  // Export PNG menu
+  game.settings.registerMenu(MOD_ID, "export-png", {
+    name: "Export PNG",
+    label: "Export chart as PNG",
+    hint: "Export current 3d6 distribution chart.",
+    icon: "fa-solid fa-image",
+    type: class extends FormApplication {
+      async render() { await exportChartAsPNG(); this.close(); return this; }
+    },
+    restricted: false
+  });
+
+  console.log(`${MOD_ID}: Settings registered successfully`);
+
+  // UI integration
+  Hooks.on("renderChatLog", (_app, html) => {
+    injectControls(html);
+  });
+
+  Hooks.on("renderChatInput", (app, elements) => {
+    const root = elements?.root ?? app?.element ?? document;
+    injectControls(root);
+  });
+});
+
+/* ---------------------- Settings Registration Helper ---------------------- */
+
+function registerSettings() {
+  // ==================== GM CONFIGURATION ====================
+  
   // Display Options
   game.settings.register(MOD_ID, "hide-gm-data", {
     name: "Hide GM Data",
     hint: "Don't show GM data in statistics",
     scope: "world",
-    config: true,
-    type: Boolean,
-    default: false
-  });
-
-  game.settings.register(MOD_ID, "hide-chat-icons", {
-    name: "Hide Chat Icons",
-    hint: "Don't show icons in chat log",
-    scope: "world", 
     config: true,
     type: Boolean,
     default: false
@@ -358,73 +295,171 @@ Hooks.once("init", async () => {
     default: true
   });
 
-  // Recorder ativo
+  // Global Recording Control
   game.settings.register(MOD_ID, SET_ACTIVE, {
-    name: "Logger active",
+    name: "Global Recording Active",
+    hint: "Enable/disable roll recording globally (GM control)",
     scope: "world",
-    config: false,
+    config: true,
     type: Boolean,
     default: true
   });
 
-  // Fire system settings
-  game.settings.register(MOD_ID, SET_USE_FIRE_ICONS, {
-    name: "Usar ícones on fire?",
-    hint: "Exibe ícones de fogo para rolls críticos e especiais",
+  // Effect System - Global Controls
+  game.settings.register(MOD_ID, SET_USE_EFFECT_ICONS, {
+    name: "Enable Counter (GM)",
+    hint: "Enable the counter system globally (GM setting)",
     scope: "world",
     config: true,
     type: Boolean,
-    default: false
+    default: true
   });
 
-  game.settings.register(MOD_ID, SET_USE_FIRE_ANIMATION, {
-    name: "Usar animação onfire?",
-    hint: "Ativa animações de fogo para rolls críticos e especiais",
+  game.settings.register(MOD_ID, SET_USE_EFFECT_ANIMATION, {
+    name: "Enable Animation Effects (GM)",
+    hint: "Enable visual animations globally (GM setting)",
     scope: "world",
     config: true,
     type: Boolean,
-    default: false
+    default: true
   });
 
-  // Fire system data storage
-  game.settings.register(MOD_ID, SET_FIRE_COUNTERS, {
-    name: "Fire Counters",
+  // Effect Theme Selection
+  game.settings.register(MOD_ID, SET_EFFECT_THEME, {
+    name: "Effect Theme",
+    hint: "Choose between fire or electric effects for the 'on fire' system",
     scope: "world",
-    config: false,
-    type: Object,
-    default: {}
-  });
-
-  game.settings.register(MOD_ID, SET_ONFIRE_USERS, {
-    name: "OnFire Users",
-    scope: "world",
-    config: false,
-    type: Object,
-    default: {}
-  });
-
-  // (Opcional) ação rápida no menu para exportar PNG direto do painel de settings
-  game.settings.registerMenu(MOD_ID, "export-png", {
-    name: "Export PNG",
-    label: "Export chart as PNG",
-    hint: "Export current 3d6 distribution chart.",
-    icon: "fa-solid fa-image",
-    type: class extends FormApplication {
-      async render() { await exportChartAsPNG(); this.close(); return this; }
+    config: true,
+    type: String,
+    choices: {
+      "fire": "Fire 🔥",
+      "electric": "Electric ⚡"
     },
-    restricted: false
+    default: "fire"
   });
 
-  // UI integration
-  Hooks.on("renderChatLog", (_app, html) => {
-    injectControls(html);
+  // Full Bar System Configuration
+  game.settings.register(MOD_ID, SET_FULL_BAR_MAX_POINTS, {
+    name: "Full Bar Maximum Points",
+    hint: "Maximum points for the full bar system (counters show proportionally from 0-10)",
+    scope: "world",
+    config: true,
+    type: Number,
+    default: 30,
+    range: {
+      min: 10,
+      max: 100,
+      step: 1
+    }
   });
 
-  Hooks.on("renderChatInput", (app, elements) => {
-    const root = elements?.root ?? app?.element ?? document;
-    injectControls(root);
+  // Custom Active Text - WORLD SCOPE so everyone sees the change
+  game.settings.register(MOD_ID, SET_GLOBAL_ACTIVE_TEXT_FALLBACK, {
+    name: "Global Active Text (GM Fallback)",
+    hint: "Default active text for all players who haven't set their own (use 'X' as placeholder for name). Example: 'X IS AWESOME' becomes 'PlayerName IS AWESOME'",
+    scope: "world",
+    config: true,
+    type: String,
+    default: "X IS ON FIRE",
+    onChange: () => {
+      // Re-apply effects when global fallback text changes
+      setTimeout(() => {
+        effectManager.reapplyEffectsToExistingMessages();
+      }, 100);
+    }
   });
-});
+  
+  // ==================== USER CONFIGURATION ====================
+  
+  // Player's Personal Custom Active Text
+  game.settings.register(MOD_ID, SET_PLAYER_UI_CUSTOM_TEXT, {
+    name: "My Personal Active Text",
+    hint: "Your personal active text that everyone will see when you're active (use 'X' as placeholder for your name). Leave empty to use GM's default. Example: 'X IS AWESOME' becomes 'YourName IS AWESOME'",
+    scope: "client",
+    config: true,
+    type: String,
+    default: "",
+    onChange: async (newValue) => {
+      try {
+        // Store the custom text in the user's flag so all clients can see it
+        await game.user.setFlag(MOD_ID, USER_CUSTOM_ACTIVE_TEXT_FLAG_KEY, newValue);
+        
+        // Re-apply effects when personal text changes
+        setTimeout(() => {
+          effectManager.reapplyEffectsToExistingMessages();
+        }, 100);
+      } catch (e) {
+        console.error(`${MOD_ID}: Error setting user flag for custom text:`, e);
+        ui.notifications?.error("Failed to save custom active text");
+      }
+    }
+  });
+  
+  game.settings.register(MOD_ID, SET_PLAYER_SHOW_COUNTERS, {
+    name: "Show Counters",
+    hint: "Show counter icons on chat messages (personal setting)",
+    scope: "client",
+    config: true,
+    type: Boolean,
+    default: true
+  });
+
+  game.settings.register(MOD_ID, SET_PLAYER_SHOW_ANIMATIONS, {
+    name: "Show Animation Effects",
+    hint: "Show visual animation effects (personal setting)",
+    scope: "client",
+    config: true,
+    type: Boolean,
+    default: true
+  });
+
+  game.settings.register(MOD_ID, SET_PLAYER_SHOW_CHAT_CONTROLS, {
+    name: "Show Chat Controls",
+    hint: "Show statistics and recording buttons in chat (personal setting)",
+    scope: "client",
+    config: true,
+    type: Boolean,
+    default: true
+  });
+
+  game.settings.register(MOD_ID, SET_PLAYER_HIDE_EFFECT_EMOJIS, {
+    name: "Hide Effect Emojis",
+    hint: "Hide effect emojis on chat messages (personal setting) - counting continues in background",
+    scope: "client",
+    config: true,
+    type: Boolean,
+    default: false
+  });
+
+  // ==================== INTERNAL DATA STORAGE ====================
+  
+  // Player Pause Control (internal, controlled via chat button)
+  game.settings.register(MOD_ID, SET_PLAYER_PAUSE_ROLLS, {
+    name: "Pause My Rolls",
+    hint: "Pause recording of your own rolls (controlled via chat button)",
+    scope: "client",
+    config: false,
+    type: Boolean,
+    default: false
+  });
+
+  // Effect system data storage (internal)
+  game.settings.register(MOD_ID, SET_EFFECT_COUNTERS, {
+    name: "Effect Counters Data",
+    scope: "world",
+    config: false,
+    type: Object,
+    default: {}
+  });
+
+  game.settings.register(MOD_ID, SET_EFFECT_ACTIVE_USERS, {
+    name: "Active Effect Users Data",
+    scope: "world",
+    config: false,
+    type: Object,
+    default: {}
+  });
+}
 
 /* ---------------------- Chat Commands ---------------------- */
 
@@ -435,11 +470,6 @@ Hooks.on("init", () => {
 
     if (command === "/stats") {
       showStatsDialog();
-      return false;
-    }
-
-    if (command === "/stats show") {
-      showComparativeStatsDialog();
       return false;
     }
 
@@ -456,151 +486,146 @@ Hooks.on("init", () => {
       return false;
     }
 
-    // Fire system commands
-    if (command === "/fire reset") {
-      if (game.user.isGM) {
-        Promise.all([
-          game.settings.set(MOD_ID, SET_FIRE_COUNTERS, {}),
-          game.settings.set(MOD_ID, SET_ONFIRE_USERS, {})
-        ]).then(() => {
-          ui.notifications?.info("Fire counters reset for all users.");
-        });
-      } else {
-        ui.notifications?.warn("Only GMs can reset fire counters.");
-      }
+    // NEW COMMAND: Complete module reset
+    if (command === "/stats fullreset" || command === "/stats resetall") {
+      effectManager.completeModuleReset();
       return false;
     }
 
-    // Clean up corrupted fire data
-    if (command === "/fire cleanup") {
-      if (game.user.isGM) {
-        cleanupCorruptedFireData();
-      } else {
-        ui.notifications?.warn("Only GMs can cleanup fire data.");
-      }
-      return false;
-    }
-
-    // Debug command to show all fire data
-    if (command === "/fire debug") {
-      if (game.user.isGM) {
-        const counters = game.settings.get(MOD_ID, SET_FIRE_COUNTERS) ?? {};
-        const onFireUsers = game.settings.get(MOD_ID, SET_ONFIRE_USERS) ?? {};
-        
-        console.log(`${MOD_ID}: [DEBUG] All fire counters:`, counters);
-        console.log(`${MOD_ID}: [DEBUG] All onFire users:`, onFireUsers);
-        
-        const message = `Fire Debug:\nCounters: ${JSON.stringify(counters, null, 2)}\nOnFire: ${JSON.stringify(onFireUsers, null, 2)}`;
-        ui.notifications?.info("Fire debug info logged to console.");
-        
-        // Also send to chat for easier reading
-        ChatMessage.create({
-          content: `<pre>${message}</pre>`,
-          speaker: ChatMessage.getSpeaker()
-        });
-      } else {
-        ui.notifications?.warn("Only GMs can access debug commands.");
-      }
-      return false;
-    }
-
-    // Fire system test commands
-    if (command.startsWith("/fire add")) {
-      if (game.user.isGM) {
-        const parts = command.split(" ");
-        const amount = parseInt(parts[2]) || 1;
-        updateFireCounter(game.user.id, amount).then((newCount) => {
-          ui.notifications?.info(`Added ${amount} fire icon(s). Current total: ${newCount}`);
-        });
-      } else {
-        ui.notifications?.warn("Only GMs can add fire counters.");
-      }
-      return false;
-    }
-
-    if (command === "/fire test") {
-      if (game.user.isGM) {
-        handleCriticalSuccess(game.user.id).then(() => {
-          ui.notifications?.info("Set current user to ON FIRE for testing!");
-        });
-      } else {
-        ui.notifications?.warn("Only GMs can test fire effects.");
-      }
-      return false;
-    }
-
-    if (command === "/fire status") {
-      const counters = game.settings.get(MOD_ID, SET_FIRE_COUNTERS) ?? {};
-      const onFireUsers = game.settings.get(MOD_ID, SET_ONFIRE_USERS) ?? {};
-      const myCount = counters[game.user.id] ?? 0;
-      const amOnFire = onFireUsers[game.user.id] ?? false;
-      
-      console.log(`${MOD_ID}: [DEBUG] Fire status check - counters:`, counters);
-      console.log(`${MOD_ID}: [DEBUG] Fire status check - onFireUsers:`, onFireUsers);
-      console.log(`${MOD_ID}: [DEBUG] Fire status check - myCount: ${myCount}, amOnFire: ${amOnFire}`);
-      
-      ui.notifications?.info(`Your fire status: ${myCount} icons${amOnFire ? ' (ON FIRE!)' : ''}`);
-      return false;
-    }
-    return true;
+    // REMOVED: Custom text command - now handled by settings
   });
 });
 
-/* ---------------------- Roll Logging with Fire System ---------------------- */
+/* ---------------------- Roll Logging with Effect System ---------------------- */
 
 Hooks.on("ready", () => {
-  // Clean up any corrupted fire data on startup
+  console.log(`${MOD_ID}: Module ready, initializing roll logging...`);
+  
+  // Clean up any corrupted effect data on startup
   if (game.user.isGM) {
-    cleanupCorruptedFireData();
+    effectManager.cleanupCorruptedEffectData();
   }
+  
+  // Re-apply effects to existing messages after refresh
+  setTimeout(() => {
+    effectManager.reapplyEffectsToExistingMessages();
+  }, 1000);
+  
+  console.log(`${MOD_ID}: [DEBUG] Module ready - effects will be applied to new messages and re-applied to existing ones`);
   
   Hooks.on("createChatMessage", async (message) => {
     try {
+      // Check global recording state
       if (!game.settings.get(MOD_ID, SET_ACTIVE)) return;
+      
+      // Check individual player recording state (only for non-GM users)
+      if (!game.user.isGM && game.settings.get(MOD_ID, SET_PLAYER_PAUSE_ROLLS)) return;
+      
       if (!isRollMessage(message)) return;
 
       const parsedEntry = parseMessage(message);
       if (!parsedEntry) return;
 
+      // Skip effect processing for blind rolls (but still log the roll data)
+      const isBlindRoll = message.blind === true;
+
       // Store the roll data
       if (game.user.isGM) {
         await updateRollLogGM(parsedEntry);
       } else {
-        // Send request to GM via socket
-        game.socket.emit(`module.${MOD_ID}`, {
-          action: "updateRollLog",
-          rollEntry: parsedEntry
-        });
+        // Send request to GM via socketlib
+        if (gurpsRollStatsSocket && gurpsRollStatsSocket.executeAsGM) {
+          gurpsRollStatsSocket.executeAsGM('updateRollLog', parsedEntry);
+        } else {
+          console.warn(`${MOD_ID}: SocketLib not available for updateRollLog`);
+        }
       }
 
-      // Handle fire system if enabled
-      if (game.settings.get(MOD_ID, SET_USE_FIRE_ICONS)) {
+      // Handle effect system if enabled (skip for blind rolls)
+      const globalIconsEnabled = game.settings.get(MOD_ID, SET_USE_EFFECT_ICONS);
+      const playerShowCounters = game.settings.get(MOD_ID, SET_PLAYER_SHOW_COUNTERS);
+      
+      if (globalIconsEnabled && playerShowCounters && !isBlindRoll) {
         let userId = message.user ?? message.userId;
-        userId = normalizeUserId(userId); // Normalize to string
+        userId = effectManager.normalizeUserId(userId); // Normalize to string
         
-        console.log(`${MOD_ID}: [DEBUG] Processing fire system for normalized userId: ${userId}`);
+        console.log(`${MOD_ID}: [DEBUG] Processing roll for user ${userId} (blind: ${isBlindRoll})`);
         
         const isSuccess = parsedEntry.success === true;
         const isFailure = parsedEntry.success === false;
         const isCriticalSuccess = /Critical\s+Success!/i.test(parsedEntry.text || "");
         const isCriticalFailure = /Critical\s+Failure!/i.test(parsedEntry.text || "");
 
+        console.log(`${MOD_ID}: [DEBUG] Roll outcome - success: ${isSuccess}, failure: ${isFailure}, critSuccess: ${isCriticalSuccess}, critFailure: ${isCriticalFailure}`);
+
+        // Get current effect theme
+        const currentEffectTheme = game.settings.get(MOD_ID, SET_EFFECT_THEME) || 'fire';
+        
+        // CRITICAL FIX: Get message element immediately for critical success
+        let messageElement = null;
         if (isCriticalSuccess) {
-          console.log(`${MOD_ID}: [DEBUG] Critical success detected for user ${userId}`);
-          // Critical success: go to 10 (on fire)
-          await handleCriticalSuccess(userId);
-        } else if (isSuccess) {
-          console.log(`${MOD_ID}: [DEBUG] Regular success detected for user ${userId}`);
-          // Regular success: +1 fire icon
-          await updateFireCounter(userId, 1);
-        } else if (isFailure) {
-          console.log(`${MOD_ID}: [DEBUG] Failure detected for user ${userId} (critical: ${isCriticalFailure})`);
-          // Handle failure (regular or critical)
-          await handleFireLoss(userId, isFailure, isCriticalFailure);
+          // Wait a bit for the message to be rendered in DOM
+          setTimeout(() => {
+            messageElement = document.querySelector(`[data-message-id="${message.id}"]`);
+            if (messageElement) {
+              console.log(`${MOD_ID}: [CRITICAL SUCCESS] Found message element for immediate effect application`);
+              // Apply roll outcome with immediate message element for critical success
+              effectManager.applyRollOutcomeToEffect(userId, currentEffectTheme, isSuccess, isFailure, isCriticalSuccess, isCriticalFailure, messageElement);
+            } else {
+              console.warn(`${MOD_ID}: [CRITICAL SUCCESS] Message element not found, applying without immediate effect`);
+              // Fallback without message element
+              effectManager.applyRollOutcomeToEffect(userId, currentEffectTheme, isSuccess, isFailure, isCriticalSuccess, isCriticalFailure);
+            }
+          }, 50);
+        } else {
+          // For non-critical success rolls, use normal processing
+          await effectManager.applyRollOutcomeToEffect(userId, currentEffectTheme, isSuccess, isFailure, isCriticalSuccess, isCriticalFailure);
         }
+        
+        // Apply effects to the current message for all roll types
+        if (!isCriticalSuccess) {
+          setTimeout(() => {
+            const messageElement = document.querySelector(`[data-message-id="${message.id}"]`);
+            if (messageElement) {
+              console.log(`${MOD_ID}: [DEBUG] Applying effects to current message ${message.id} for user ${userId}`);
+              effectManager.applyEffectToSpecificMessage(messageElement, userId, currentEffectTheme);
+            } else {
+              console.warn(`${MOD_ID}: [DEBUG] Message element not found for message ${message.id}`);
+            }
+          }, 100);
+        }
+      } else if (isBlindRoll) {
+        console.log(`${MOD_ID}: [DEBUG] Skipping effect processing for blind roll from user ${message.user ?? message.userId}`);
       }
     } catch (error) {
       console.error(`${MOD_ID} message parsing error:`, error);
     }
   });
+
+  // Handle new messages being rendered in chat - NOW WITH STYLED NAMES
+  Hooks.on("renderChatMessage", (message, html) => {
+    try {
+      // Change user name in chat when effect is active
+      let userId = message.message?.user ?? message.message?.userId ?? message.user ?? message.userId;
+      if (!userId) return;
+      
+      userId = effectManager.normalizeUserId(userId);
+      
+      // Update the sender name with styled name
+      effectManager.updateMessageSenderName(html[0], userId);
+      
+    } catch (error) {
+      console.error(`${MOD_ID} renderChatMessage error:`, error);
+    }
+  });
+
+  // Monitor setting changes to apply/remove effects
+  Hooks.on("updateSetting", (setting) => {
+    // Only handle our module's settings
+    if (setting.key.startsWith(`${MOD_ID}.`)) {
+    effectManager.handleSettingChange(setting);
+    }
+  });
+
+  console.log(`${MOD_ID}: Roll logging hooks registered successfully`);
 });
