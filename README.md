@@ -321,3 +321,9 @@ This module is provided as-is for the Foundry VTT community. Please respect the 
 Thanks to Tuvulu for the idea — at first, I had no intention of making it, but you won me over with persistence!
 
 *"foo, bar and zip! Not baz!"*
+
+
+## Licence 
+
+
+MIT
