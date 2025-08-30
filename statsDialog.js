@@ -496,7 +496,6 @@ function renderStats(selectedUser) {
     selectedUserId = user?.id || "";
   }
   
-  const stats = computeStats(currentRolls, selectedUser);
   const stats = computeStats(currentRolls, selectedUser, hideGMData);
   const actorStats = computeActorStats(selectedUserId, hideGMData);
 
