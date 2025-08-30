@@ -10,7 +10,7 @@
       "flags": {}
     }
   ],
-  "version": "1.0.0",
+  "version": "1.0.1",
   "compatibility": {
     "minimum": "13",
     "verified": "13",
@@ -24,10 +24,11 @@
         "compatibility": {}
       }
     ]
-  },
-  "url": "https://github.com/Boifuba/gurps-rolls-stats",
-  "manifest": "https://github.com/Boifuba/gurps-rolls-stats/releases/download/1.0.0/module.json",
-  "download": "https://github.com/Boifuba/gurps-rolls-stats/releases/download/1.0.0/gurps-rolls-stats.zip",
+  },  "styles": [
+    {
+      "src": "roll-stats.css"
+    }
+  ],
   "esmodules": [
     "main.js", 
     "constants.js", 
@@ -41,5 +42,9 @@
     "flameEffects.js",
     "unluckyEffects.js",
     "electricEffects.js"
-  ]
+  ],
+  "url": "https://github.com/Boifuba/gurps-rolls-stats",
+  "manifest": "https://raw.githubusercontent.com/Boifuba/gurps-rolls-stats/refs/heads/main/module.json",
+  "download": "https://github.com/Boifuba/gurps-rolls-stats/releases/download/1.0.1/gurps-rolls-stats.zip"
+  
 }

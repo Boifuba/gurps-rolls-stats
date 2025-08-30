@@ -1,5 +1,30 @@
 // statsCalculator.js — Statistics calculation logic
-export function computeStats(rows, userFilter) {
+
+/**
+ * Gets all GM user IDs
+ * @returns {string[]} Array of GM user IDs
+ */
+function getGMUserIds() {
+  return game.users.filter(user => user.isGM).map(user => user.id);
+}
+
+/**
+ * Gets all GM user names
+ * @returns {string[]} Array of GM user names
+ */
+function getGMUserNames() {
+  return game.users.filter(user => user.isGM).map(user => user.name);
+}
+
+export function computeStats(rows, userFilter, hideGMData = false) {
+  // Filter out GM data if hideGMData is true
+  let filteredRows = rows;
+  if (hideGMData) {
+    const gmUserNames = getGMUserNames();
+    filteredRows = rows.filter(r => !gmUserNames.includes(r.user));
+  }
+  
+  // Apply user filter if specified
   const data = rows.filter(r => !userFilter || r.user === userFilter);
 
   const n = data.length;

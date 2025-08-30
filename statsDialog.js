@@ -1,8 +1,96 @@
 // statsDialog.js - Statistics dialog UI for displaying roll analysis and charts
-import { MOD_ID, SET_LOG } from './constants.js';
+import { MOD_ID, SET_LOG, SET_DAMAGE_LOG, SET_FATIGUE_LOG } from './constants.js';
 import { computeStats } from './statsCalculator.js';
 import { drawRollsChart } from './chartUtils.js';
 import { escapeHtml } from './utils.js';
+
+/**
+ * Gets all GM user IDs
+ * @returns {string[]} Array of GM user IDs
+ */
+function getGMUserIds() {
+  return game.users.filter(user => user.isGM).map(user => user.id);
+}
+
+/**
+ * Gets all GM user names
+ * @returns {string[]} Array of GM user names
+ */
+function getGMUserNames() {
+  return game.users.filter(user => user.isGM).map(user => user.name);
+}
+
+/**
+ * Gets all actor IDs owned by a specific user
+ * @param {string} userId - The user ID
+ * @returns {string[]} Array of actor IDs owned by the user
+ */
+function getActorIdsForUser(userId) {
+  if (!userId) return [];
+  
+  const user = game.users.get(userId);
+  if (!user) return [];
+  
+  // Get all actors owned by this user
+  const ownedActors = game.actors.filter(actor => {
+    return actor.ownership && actor.ownership[userId] === 3; // OWNER permission level
+  });
+  
+  return ownedActors.map(actor => actor.id);
+}
+
+/**
+ * Computes damage and fatigue statistics for actors
+ * @param {string} selectedUserId - Optional user ID filter
+ * @param {boolean} hideGMData - Whether to hide GM data
+ * @returns {Object} Computed actor statistics
+ */
+function computeActorStats(selectedUserId = "", hideGMData = false) {
+  const damageLog = game.settings.get(MOD_ID, SET_DAMAGE_LOG) ?? [];
+  const fatigueLog = game.settings.get(MOD_ID, SET_FATIGUE_LOG) ?? [];
+  
+  // Filter out GM data if hideGMData is true
+  let filteredDamageLog = damageLog;
+  let filteredFatigueLog = fatigueLog;
+  
+  if (hideGMData) {
+    const gmUserIds = getGMUserIds();
+    filteredDamageLog = damageLog.filter(entry => !gmUserIds.includes(entry.changedByUserId));
+    filteredFatigueLog = fatigueLog.filter(entry => !gmUserIds.includes(entry.changedByUserId));
+  }
+  
+  // Filter by user's actors if specified
+  let filteredDamage, filteredFatigue;
+  
+  if (selectedUserId) {
+    const userActorIds = getActorIdsForUser(selectedUserId);
+    console.log(`${MOD_ID}: [DEBUG] User ${selectedUserId} owns actors:`, userActorIds);
+    
+    filteredDamage = filteredDamageLog.filter(entry => userActorIds.includes(entry.actorId));
+    filteredFatigue = filteredFatigueLog.filter(entry => userActorIds.includes(entry.actorId));
+  } else {
+    filteredDamage = filteredDamageLog;
+    filteredFatigue = filteredFatigueLog;
+  }
+  
+  // Calculate totals
+  const totalDamage = filteredDamage.reduce((sum, entry) => sum + (entry.damageTaken || 0), 0);
+  const totalFatigue = filteredFatigue.reduce((sum, entry) => sum + (entry.fatigueSpent || 0), 0);
+  
+  console.log(`${MOD_ID}: [DEBUG] Actor stats for user ${selectedUserId}:`, {
+    totalDamage,
+    totalFatigue,
+    damageEntries: filteredDamage.length,
+    fatigueEntries: filteredFatigue.length
+  });
+  
+  return {
+    totalDamage,
+    totalFatigue,
+    damageEntries: filteredDamage.length,
+    fatigueEntries: filteredFatigue.length
+  };
+}
 
 function getActorNameForUser(rolls, userName) {
   const userRoll = rolls.find(r => r.user === userName && r.actor);
@@ -11,9 +99,20 @@ function getActorNameForUser(rolls, userName) {
 
 /* ---------- build full rankings (ALL players, sorted) ---------- */
 function buildRankings(currentRolls) {
-  const users = [...new Set(currentRolls.map(r => r.user))].sort();
+  const hideGMData = game.settings.get(MOD_ID, "hide-gm-data") ?? false;
+  
+  // Filter out GM users if hideGMData is true
+  let users = [...new Set(currentRolls.map(r => r.user))];
+  if (hideGMData) {
+    const gmUserNames = getGMUserNames();
+    users = users.filter(userName => !gmUserNames.includes(userName));
+  }
+  users.sort();
+  
   const rows = users.map(user => {
-    const s = computeStats(currentRolls, user);
+    const s = computeStats(currentRolls, user, hideGMData);
+    const userId = game.users.find(u => u.name === user)?.id || "";
+    const actorStats = computeActorStats(userId);
     return {
       user,
       actor: getActorNameForUser(currentRolls, user),
@@ -21,6 +120,8 @@ function buildRankings(currentRolls) {
       critFail: s.critFail || 0,
       succPct:  s.succPct  || 0,
       failPct:  s.failPct  || 0,
+      totalDamage: actorStats.totalDamage || 0,
+      totalFatigue: actorStats.totalFatigue || 0,
     };
   });
 
@@ -32,16 +133,29 @@ function buildRankings(currentRolls) {
     unluckiest:   sortBy("critFail", true),
     bestSuccess:  sortBy("succPct",  true),
     worstSuccess: sortBy("failPct",  true),
+    mostDamageTaken: sortBy("totalDamage", true),
+    mostFatigueSpent: sortBy("totalFatigue", true),
   };
 }
 
 /* ---------- only top cards (for UI), ties allowed ---------- */
 function findTopPerformers(currentRolls) {
-  const users = [...new Set(currentRolls.map(r => r.user))].sort();
+  const hideGMData = game.settings.get(MOD_ID, "hide-gm-data") ?? false;
+  
+  // Filter out GM users if hideGMData is true
+  let users = [...new Set(currentRolls.map(r => r.user))];
+  if (hideGMData) {
+    const gmUserNames = getGMUserNames();
+    users = users.filter(userName => !gmUserNames.includes(userName));
+  }
+  users.sort();
+  
   const statsByUser = {};
   users.forEach(u => {
-    const s = computeStats(currentRolls, u);
-    statsByUser[u] = { ...s, actorName: getActorNameForUser(currentRolls, u) };
+    const s = computeStats(currentRolls, u, hideGMData);
+    const userId = game.users.find(user => user.name === u)?.id || "";
+    const actorStats = computeActorStats(userId, hideGMData);
+    statsByUser[u] = { ...s, ...actorStats, actorName: getActorNameForUser(currentRolls, u) };
   });
 
   const max = (fn) => Math.max(...users.map(u => fn(statsByUser[u]) || 0));
@@ -49,6 +163,8 @@ function findTopPerformers(currentRolls) {
   const maxCritFail = max(s => s.critFail);
   const maxSuccPct  = max(s => s.succPct);
   const maxFailPct  = max(s => s.failPct);
+  const maxTotalDamage = max(s => s.totalDamage);
+  const maxTotalFatigue = max(s => s.totalFatigue);
 
   const pick = (pred, map) => {
     const list = users.filter(pred).map(map);
@@ -64,6 +180,10 @@ function findTopPerformers(currentRolls) {
       u => ({ user: u, actor: statsByUser[u].actorName, succPct: statsByUser[u].succPct })),
     worstSuccess: pick(u => statsByUser[u].failPct === maxFailPct && maxFailPct > 0,
       u => ({ user: u, actor: statsByUser[u].actorName, failPct: statsByUser[u].failPct })),
+    mostDamageTaken: pick(u => statsByUser[u].totalDamage === maxTotalDamage && maxTotalDamage > 0,
+      u => ({ user: u, actor: statsByUser[u].actorName, totalDamage: statsByUser[u].totalDamage })),
+    mostFatigueSpent: pick(u => statsByUser[u].totalFatigue === maxTotalFatigue && maxTotalFatigue > 0,
+      u => ({ user: u, actor: statsByUser[u].actorName, totalFatigue: statsByUser[u].totalFatigue })),
   };
 }
 
@@ -72,7 +192,8 @@ function renderComparativeStats() {
   const currentRolls = game.settings.get(MOD_ID, SET_LOG) ?? [];
   if (currentRolls.length === 0) {
     return `
-      <div style="padding: 2rem; text-align: center;">
+      <link rel="stylesheet" href="roll-stats.css">
+      <div class="grs-no-data">
         <p><strong>No rolls recorded yet.</strong></p>
         <p>Statistics will appear here when players start making 3d6 rolls.</p>
       </div>
@@ -81,67 +202,48 @@ function renderComparativeStats() {
 
   const performers = findTopPerformers(currentRolls);
 
-  // CSS only (no JS hover listeners)
-  const css = `
-    <style>
-      .grs-grid { display:grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 1rem; }
-      .player-entry { transition: all .2s ease-in-out; border-radius: 4px; }
-      .player-entry:hover {
-        background-color: var(--color-control-bg-hover, rgba(233,236,239,.2));
-        transform: translateY(-2px);
-        box-shadow: 0 3px 10px rgba(0,0,0,.2);
-      }
-      .grs-print-btn {
-        padding: .5rem .75rem;
-        border: 1px solid var(--color-border, #888);
-        border-radius: 6px;
-        cursor: pointer;
-        background: var(--color-control-bg, #f5f5f5);
-      }
-      .grs-print-btn:hover { background: var(--color-control-bg-hover, #eee); }
-    </style>
-  `;
-
   function getActorImage(actorName) {
     if (!actorName) return '';
     const actor = game.actors.find(a => a.name === actorName);
     if (actor?.img) {
-      return `<img src="${actor.img}" style="width:60px; height:60px; border-radius:50%; margin-right:.5rem; object-fit:cover;" alt="${actorName}">`;
+      return `<img src="${actor.img}" class="grs-actor-image-large" alt="${actorName}">`;
     }
     return '';
   }
 
   const section = (title, color, bodyHtml) => `
-    <div class="player-stat-card" style="padding:1rem; border-radius:6px; border-left:3px solid ${color};">
-      <h3 style="margin:0 0 .5rem 0; color:var(--color-text-highlight,#4aa); font-size:1.2rem; font-weight:700;">${title}</h3>
+    <div class="player-stat-card" style="border-left-color: ${color};">
+      <h3>${title}</h3>
       ${bodyHtml}
     </div>
   `;
 
   const listOrEmpty = (arr, mapMetric) => arr
     ? arr.map(p => `
-      <div class="player-entry" style="display:flex; align-items:center; padding:.5rem; margin:.25rem 0;">
+      <div class="grs-player-ranking-entry">
         ${getActorImage(p.actor)}
         <div>
-          <strong>${escapeHtml(p.actor)}</strong>
-          <span style="color:#666; font-size:.9rem;">(${escapeHtml(p.user)})</span><br>
-          <span style="font-weight:700;">${mapMetric(p)}</span>
+          <span class="grs-ranking-player-name">${escapeHtml(p.actor)}</span>
+          <span class="grs-ranking-player-user">(${escapeHtml(p.user)})</span><br>
+          <span class="grs-ranking-player-metric">${mapMetric(p)}</span>
         </div>
       </div>
     `).join('')
-    : `<p style="color:#666; font-style:italic;">No data.</p>`;
+    : `<p class="grs-text-muted grs-text-italic">No data.</p>`;
 
   const luckyHtml      = listOrEmpty(performers.luckiest,     p => `${p.critSucc} critical successes`);
   const unluckyHtml    = listOrEmpty(performers.unluckiest,   p => `${p.critFail} critical failures`);
   const bestHtml       = listOrEmpty(performers.bestSuccess,  p => `${formatValue(p.succPct, 1)}% success rate`);
   const worstHtml      = listOrEmpty(performers.worstSuccess, p => `${formatValue(p.failPct, 1)}% failure rate`);
+  const damageHtml     = listOrEmpty(performers.mostDamageTaken, p => `${p.totalDamage} total damage taken`);
+  const fatigueHtml    = listOrEmpty(performers.mostFatigueSpent, p => `${p.totalFatigue} total fatigue spent`);
 
   return `
-    ${css}
-    <div style="padding:1rem; display:grid; gap:1rem; ">
-      <div style="text-align:center; margin-bottom:1rem; border-bottom:2px solid #ccc; padding-bottom:1rem;">
-        <h2 style="margin:0; font-size:1.5rem;">Ranking</h2>
-        <p style="margin:.5rem 0; color:#666; font-size:.9rem;">Total rolls recorded: ${currentRolls.length}</p>
+    <link rel="stylesheet" href="roll-stats.css">
+    <div class="grs-stats-container">
+      <div class="grs-stats-header">
+        <h2>Ranking</h2>
+        <p>Total rolls recorded: ${currentRolls.length}</p>
       </div>
 
       <div class="grs-grid">
@@ -149,6 +251,8 @@ function renderComparativeStats() {
         ${section("Unluckiest", "#dc3545", unluckyHtml)}
         ${section("Best Success", "#007bff", bestHtml)}
         ${section("Worst Success", "#ffc107", worstHtml)}
+        ${section("Most Damage Taken", "#dc3545", damageHtml)}
+        ${section("Most Fatigue Spent", "#ffc107", fatigueHtml)}
       </div>
 
     </div>
@@ -168,6 +272,10 @@ function sortForRanking(type, arr) {
       return a.sort((x,y) => (y.succPct  ?? 0) - (x.succPct  ?? 0) || x.user.localeCompare(y.user));
     case "worstSuccess":
       return a.sort((x,y) => (y.failPct  ?? 0) - (x.failPct  ?? 0) || x.user.localeCompare(y.user));
+    case "mostDamageTaken":
+      return a.sort((x,y) => (y.totalDamage ?? 0) - (x.totalDamage ?? 0) || x.user.localeCompare(y.user));
+    case "mostFatigueSpent":
+      return a.sort((x,y) => (y.totalFatigue ?? 0) - (x.totalFatigue ?? 0) || x.user.localeCompare(y.user));
     default:
       return a;
   }
@@ -184,7 +292,9 @@ async function printRankingToChat(rankingType, rankingData) {
     luckiest: "🍀 Luckiest Players",
     unluckiest: "💀 Unluckiest Players",
     bestSuccess: "🎯 Best Success Rate",
-    worstSuccess: "📉 Worst Success Rate"
+    worstSuccess: "📉 Worst Success Rate",
+    mostDamageTaken: "💔 Most Damage Taken",
+    mostFatigueSpent: "💧 Most Fatigue Spent"
   };
   const title = titles[rankingType] || "Player Ranking";
 
@@ -192,7 +302,7 @@ async function printRankingToChat(rankingType, rankingData) {
     if (!actorName) return '';
     const actor = game.actors.find(a => a.name === actorName);
     if (actor?.img) {
-      return `<img src="${actor.img}" style="width:40px; height:40px; border-radius:50%; margin-right:.5rem; object-fit:cover;" alt="${actorName}">`;
+      return `<img src="${actor.img}" class="grs-actor-image-small" alt="${actorName}">`;
     }
     return '';
   }
@@ -244,27 +354,29 @@ async function printRankingToChat(rankingType, rankingData) {
         case 'unluckiest':   metric = `${p.critFail} critical failures`;  break;
         case 'bestSuccess':  metric = `${formatValue(p.succPct, 1)}% success rate`; break;
         case 'worstSuccess': metric = `${formatValue(p.failPct, 1)}% failure rate`;  break;
+        case 'mostDamageTaken': metric = `${p.totalDamage} damage taken`; break;
+        case 'mostFatigueSpent': metric = `${p.totalFatigue} fatigue spent`; break;
       }
       
       return `
-        <div style="display:flex; align-items:center; padding:.5rem; ${group.players.length > 1 ? 'border-bottom:1px solid #eee;' : ''} ${group.players.indexOf(p) === group.players.length - 1 ? 'border-bottom:none;' : ''}">
+        <div class="grs-ranking-player${group.players.indexOf(p) === group.players.length - 1 ? '' : ' grs-border-bottom'}">
           ${getActorImage(p.actor)}
-          <div>
-            <strong>${escapeHtml(p.actor)}</strong>
-            <span style="color:#666; font-size:.9rem;">(${escapeHtml(p.user)})</span><br>
-            <span style="font-weight:700;">${metric}</span>
+          <div class="grs-ranking-player-info">
+            <span class="grs-ranking-player-name">${escapeHtml(p.actor)}</span>
+            <span class="grs-ranking-player-user">(${escapeHtml(p.user)})</span><br>
+            <span class="grs-ranking-player-metric">${metric}</span>
           </div>
         </div>
       `;
     }).join('');
     
     return `
-      <div style="margin:.5rem 0; border-radius:6px; background:var(--color-bg-option,#f8f9fa); border:1px solid #ddd;">
-        <div style="display:flex; align-items:center; padding:.75rem; background:var(--color-control-bg,#e9ecef); border-radius:6px 6px 0 0; border-bottom:2px solid #ccc;">
-          <span style="font-weight:700; font-size:1.1rem; color:var(--color-text-highlight,#4aa); min-width:30px;">#${group.rank}</span>
-          <span style="font-weight:600; margin-left:.5rem;">${group.players.length > 1 ? `${group.players.length} players tied` : group.players[0].actor}</span>
+      <div class="grs-ranking-group">
+        <div class="grs-ranking-header">
+          <span class="grs-ranking-number">#${group.rank}</span>
+          <span class="grs-ranking-title">${group.players.length > 1 ? `${group.players.length} players tied` : group.players[0].actor}</span>
         </div>
-        <div style="padding:${group.players.length > 1 ? '0' : '.5rem'};">
+        <div class="grs-ranking-players${group.players.length === 1 ? ' single-player' : ''}">
           ${playersHtml}
         </div>
       </div>
@@ -272,8 +384,9 @@ async function printRankingToChat(rankingType, rankingData) {
   }).join('');
 
   const content = `
-    <div style="border-radius:8px; padding:1rem; margin:.5rem 0; max-width:420px;">
-      <h3 style="margin:0 0 1rem 0; text-align:center; font-size:1.2rem;">${title}</h3>
+    <link rel="stylesheet" href="roll-stats.css">
+    <div class="grs-chat-stats">
+      <h3 class="grs-text-center grs-mb-1" style="margin:0 0 1rem 0; font-size:1.2rem;">${title}</h3>
       ${entries}
     </div>
   `;
@@ -287,6 +400,8 @@ async function printAllRankingsToChat(rankings) {
   if (rankings.unluckiest?.length)   await printRankingToChat("unluckiest",   rankings.unluckiest);
   if (rankings.bestSuccess?.length)  await printRankingToChat("bestSuccess",  rankings.bestSuccess);
   if (rankings.worstSuccess?.length) await printRankingToChat("worstSuccess", rankings.worstSuccess);
+  if (rankings.mostDamageTaken?.length) await printRankingToChat("mostDamageTaken", rankings.mostDamageTaken);
+  if (rankings.mostFatigueSpent?.length) await printRankingToChat("mostFatigueSpent", rankings.mostFatigueSpent);
 }
 
 /* ---------- /stats show dialog (button prints ALL rankings) ---------- */
@@ -331,18 +446,89 @@ const formatValue = (value, decimals = 2) =>
 
 function renderStats(selectedUser) {
   const currentRolls = game.settings.get(MOD_ID, SET_LOG) ?? [];
-  const uniqueUsers = [...new Set(currentRolls.map(r => r.user))].sort();
+  
+  const hideGMData = game.settings.get(MOD_ID, "hide-gm-data") ?? false;
+  
+  // Build list of users - include all game users who have made rolls or own actors with damage/fatigue
+  let rollUsers = new Set(currentRolls.map(r => r.user));
+  
+  // Filter out GM users from roll users if hideGMData is true
+  if (hideGMData) {
+    const gmUserNames = getGMUserNames();
+    rollUsers = new Set([...rollUsers].filter(userName => !gmUserNames.includes(userName)));
+  }
+  
+  const damageLog = game.settings.get(MOD_ID, SET_DAMAGE_LOG) ?? [];
+  const fatigueLog = game.settings.get(MOD_ID, SET_FATIGUE_LOG) ?? [];
+  
+  // Get users who have actors with damage/fatigue entries
+  const usersWithActorData = new Set();
+  [...damageLog, ...fatigueLog].forEach(entry => {
+    // Skip GM entries if hideGMData is true
+    if (hideGMData) {
+      const gmUserIds = getGMUserIds();
+      if (gmUserIds.includes(entry.changedByUserId)) {
+        return;
+      }
+    }
+    
+    const actor = game.actors.get(entry.actorId);
+    if (actor) {
+      // Find users who own this actor
+      Object.keys(actor.ownership || {}).forEach(userId => {
+        if (actor.ownership[userId] === 3) { // OWNER permission
+          const user = game.users.get(userId);
+          if (user && (!hideGMData || !user.isGM)) {
+            usersWithActorData.add(user.name);
+          }
+        }
+      });
+    }
+  });
+  
+  // Combine and sort unique users
+  const allRelevantUsers = [...new Set([...rollUsers, ...usersWithActorData])].sort();
+  
+  // Convert selectedUser (name) to userId for internal processing
+  let selectedUserId = "";
+  if (selectedUser) {
+    const user = game.users.find(u => u.name === selectedUser);
+    selectedUserId = user?.id || "";
+  }
+  
   const stats = computeStats(currentRolls, selectedUser);
+  const stats = computeStats(currentRolls, selectedUser, hideGMData);
+  const actorStats = computeActorStats(selectedUserId, hideGMData);
 
   // Check if there's no data
   const hasData = currentRolls.length > 0;
+  
+  // Check if we have data after GM filtering
+  const filteredRolls = hideGMData ? currentRolls.filter(r => {
+    const gmUserNames = getGMUserNames();
+    return !gmUserNames.includes(r.user);
+  }) : currentRolls;
+  
+  const hasFilteredData = filteredRolls.length > 0;
+  
   const noDataMessage = hasData ? '' : `
-    <div style="background: var(--color-bg-option, #f8f9fa); border: 1px solid #ddd; border-radius: 6px; padding: 1rem; margin-bottom: 1rem; text-align: center;">
+    <div style=" border: 1px solid #ddd; border-radius: 6px; padding: 1rem; margin-bottom: 1rem; text-align: center;">
       <p style="margin: 0; color: #666; font-style: italic;">
         <i class="fa-solid fa-info-circle"></i> No rolls recorded yet.
       </p>
       <p style="margin: 0.5rem 0 0 0; color: #666; font-size: 0.9rem;">
         Statistics and charts will appear here when players start making 3d6 rolls.
+      </p>
+    </div>
+  `;
+  
+  const noFilteredDataMessage = hasFilteredData ? '' : `
+    <div style="border: 1px solid #ddd; border-radius: 6px; padding: 1rem; margin-bottom: 1rem; text-align: center;">
+      <p style="margin: 0; color: #666; font-style: italic;">
+        <i class="fa-solid fa-info-circle"></i> No player data available (GM data is hidden).
+      </p>
+      <p style="margin: 0.5rem 0 0 0; color: #666; font-size: 0.9rem;">
+        Try disabling "Hide GM Data" in settings or wait for players to make rolls.
       </p>
     </div>
   `;
@@ -352,31 +538,52 @@ function renderStats(selectedUser) {
   const sumCells = Array.from({ length: 16 }, (_, i) => `<td>${stats.totals[i + 3] || 0}</td>`).join("");
 
   return `
-    <div class="p-2" style="display:grid; gap:.5rem; ">
-      <div style="display:flex; gap:.5rem; align-items:center;">
+    <link rel="stylesheet" href="roll-stats.css">
+    <div class="grs-dialog-content">
+      <div class="grs-player-select-row">
         <label>Player:</label>
-        <select id="grs-user" style="flex:1;">
+        <select id="grs-user">
           <option value="">(All Players)</option>
-          ${uniqueUsers.map(user =>
-            `<option value="${escapeHtml(user)}" ${user === selectedUser ? "selected" : ""}>${escapeHtml(user)}</option>`
+          ${allRelevantUsers.map(userName =>
+            `<option value="${escapeHtml(userName)}" ${userName === selectedUser ? "selected" : ""}>${escapeHtml(userName)}</option>`
           ).join("")}
         </select>
       </div>
 
+      <hr class="grs-hr"/>
+      
+      <div class="grs-attribute-section">
+        <h4>
+          <i class="fa-solid fa-heart-pulse"></i> Attribute Tracking 
+        </h4>
+        <div class="grs-attribute-grid">
+          <div class="grs-attribute-card grs-attribute-card-damage">
+            <div class="grs-attribute-value grs-attribute-value-damage">${actorStats.totalDamage}</div>
+            <div class="grs-attribute-label">Damage Taken</div>
+          </div>
+          <div class="grs-attribute-card grs-attribute-card-fatigue">
+            <div class="grs-attribute-value grs-attribute-value-fatigue">${actorStats.totalFatigue}</div>
+            <div class="grs-attribute-label">Fatigue Spent</div>
+          </div>
+        </div>
+      </div>
+
+      <hr class="grs-hr"/>
+
       <div><strong>Total Rolls:</strong> ${stats.n}</div>
       <div><strong>Average Roll (3d6):</strong> ${formatValue(stats.avgTotal, 2)}</div>
 
-      <div style="display:grid; grid-template-columns:1fr 1fr; gap:.5rem;">
+      <div class="grs-stats-grid-2col">
         <div><strong>Successes:</strong> ${stats.succ} (${formatValue(stats.succPct, 1)}%)</div>
         <div><strong>Failures:</strong> ${stats.fail} (${formatValue(stats.failPct, 1)}%)</div>
       </div>
 
-      <div style="display:grid; grid-template-columns:1fr 1fr; gap:.5rem;">
+      <div class="grs-stats-grid-2col">
         <div><strong>Average Success Margin:</strong> ${formatValue(stats.usuallyPassBy, 2)}</div>
         <div><strong>Average Failure Margin:</strong> ${formatValue(stats.usuallyFailBy, 2)}</div>
       </div>
 
-      <div style="display:grid; grid-template-columns:1fr 1fr; gap:.5rem;">
+      <div class="grs-stats-grid-2col">
         <div><strong>Critical Successes:</strong> ${stats.critSucc}</div>
         <div><strong>Critical Failures:</strong> ${stats.critFail}</div>
       </div>
@@ -385,17 +592,17 @@ function renderStats(selectedUser) {
       <div>
         <strong>Roll Distribution (3d6 Totals)</strong>
       </div>
-      ${noDataMessage}
-      <div id="grs-chart" style="width:100%; height:300px; max-width:100%;"></div>
+      ${hideGMData ? noFilteredDataMessage : noDataMessage}
+      <div id="grs-chart" class="grs-chart-container"></div>
 
       <div>
         <strong>Sum Distribution (3-18):</strong>
-        <table class="grs-table" style="margin-top:.25rem;">
+        <table class="grs-table">
           <thead><tr>${sumHeaders}</tr></thead>
           <tbody><tr>${sumCells}</tr></tbody>
         </table>
         <strong>Individual Die Face Counts:</strong>
-        <table class="grs-table" style="margin-top:.25rem;">
+        <table class="grs-table">
           <thead><tr><th>1</th><th>2</th><th>3</th><th>4</th><th>5</th><th>6</th></tr></thead>
           <tbody><tr>${faceCountRow}</tr></tbody>
         </table>
@@ -424,12 +631,24 @@ function attachHandlers(windowContent, selectedUser, dialog) {
 export async function showStatsDialog(selectedUser = "") {
   async function sendStatsToChat() {
     const currentRolls = game.settings.get(MOD_ID, SET_LOG) ?? [];
-    const stats = computeStats(currentRolls, selectedUser);
+    const hideGMData = game.settings.get(MOD_ID, "hide-gm-data") ?? false;
+    const stats = computeStats(currentRolls, selectedUser, hideGMData);
+    
+    // Convert selectedUser (name) to userId for actor stats
+    let selectedUserId = "";
+    if (selectedUser) {
+      const user = game.users.find(u => u.name === selectedUser);
+      selectedUserId = user?.id || "";
+    }
+    const actorStats = computeActorStats(selectedUserId, hideGMData);
     
     // Calculate global stats for comparison (only when viewing individual user)
     let globalStats = null;
     if (selectedUser) {
-      globalStats = computeStats(currentRolls, ""); // All users
+      globalStats = computeStats(currentRolls, "", hideGMData); // All users (filtered)
+      const globalActorStats = computeActorStats("", hideGMData); // All users' actors (filtered)
+      globalStats.totalDamage = globalActorStats.totalDamage;
+      globalStats.totalFatigue = globalActorStats.totalFatigue;
     }
     
     // Get actor info for selected user
@@ -444,7 +663,7 @@ export async function showStatsDialog(selectedUser = "") {
       if (actorName) {
         const actor = game.actors.find(a => a.name === actorName);
         if (actor?.img) {
-          actorImage = `<img src="${actor.img}" style="width:50px; height:50px; border-radius:50%; margin-right:.75rem; object-fit:cover;" alt="${actorName}">`;
+          actorImage = `<img src="${actor.img}" class="grs-actor-image-medium" alt="${actorName}">`;
         }
       }
     }
@@ -454,7 +673,7 @@ export async function showStatsDialog(selectedUser = "") {
       if (!globalStats) return { style: 'font-weight:600;', indicator: '' };
       
       let isHigherBetter = true;
-      if (metricType === 'critFail' || metricType === 'failPct' || metricType === 'failMargin') {
+      if (metricType === 'critFail' || metricType === 'failPct' || metricType === 'failMargin' || metricType === 'totalDamage' || metricType === 'totalFatigue') {
         isHigherBetter = false;
       }
       
@@ -476,105 +695,124 @@ export async function showStatsDialog(selectedUser = "") {
     }
     
     const content = `
-      <div style="border-radius:8px; max-width:420px;">
-        <div style="display:flex; align-items:center; padding:.75rem; border-bottom:2px solid #ccc;">
+      <link rel="stylesheet" href="roll-stats.css">
+      <div class="grs-chat-stats">
+        <div class="grs-chat-stats-header">
           ${actorImage}
           <div>
-            <h3 style="margin:0; font-size:1.1rem; color:var(--color-text-highlight,#4aa);">
+            <h3 class="grs-chat-stats-centered-title">
               <i class="fa-solid fa-chart-simple"></i> GURPS Roll Statistics
             </h3>
-            <div style="font-size:.9rem; color:#666; margin-top:.25rem;">
+            <div class="grs-chat-stats-subtitle">
               ${escapeHtml(playerDisplayName)}${selectedUser && playerDisplayName !== selectedUser ? ` (${escapeHtml(selectedUser)})` : ''}
             </div>
+            ${selectedUser ? `<div class="grs-chat-stats-meta">Damage: ${actorStats.totalDamage} | Fatigue: ${actorStats.totalFatigue}</div>` : ''}
           </div>
         </div>
         
         ${globalStats ? `
-          <table style="width:100%; font-size:.8rem; line-height:1.3; border-collapse:collapse; ">
-            <thead style="border:none !important; background: #33333356; color: #f4f4f4;">
-  <tr style="border:none !important;">
-    <th style="text-align:left; padding:.4rem; font-weight:600; border:none !important;">Metric</th>
-    <th style="text-align:center; padding:.4rem; font-weight:600; border:none !important;">Player</th>
-    <th style="text-align:center; padding:.4rem; font-weight:600; border:none !important;">Global</th>
-  </tr>
-</thead>
-
+          <table class="grs-stats-table">
+            <thead>
+              <tr>
+                <th>Metric</th>
+                <th class="center">Player</th>
+                <th class="center">Global</th>
+              </tr>
+            </thead>
             <tbody>
-              <tr style="border-bottom:1px solid #ccc;">
-                <td style="padding:.3rem; border:none;">Total Rolls</td>
-                <td style="text-align:center; padding:.3rem; font-weight:600; border:none;">${stats.n}</td>
-                <td style="text-align:center; padding:.3rem; color:#666; border:none;">${globalStats.n}</td>
-              </tr>
-              <tr style="border-bottom:1px solid #ccc;">
-                <td style="padding:.3rem; border:none;">Average Roll (3d6)</td>
-                <td style="text-align:center; padding:.3rem; border:none; ${getComparisonStyling(stats.avgTotal, globalStats.avgTotal, 'avgTotal').style}">${getComparisonStyling(stats.avgTotal, globalStats.avgTotal, 'avgTotal').indicator} ${formatValue(stats.avgTotal, 2)}</td>
-                <td style="text-align:center; padding:.3rem; color:#666; border:none;">${formatValue(globalStats.avgTotal, 2)}</td>
-              </tr>
-              <tr style="border-bottom:1px solid #ccc;">
-                <td style="padding:.3rem; border:none;">Success Rate</td>
-                <td style="text-align:center; padding:.3rem; border:none; ${getComparisonStyling(stats.succPct, globalStats.succPct, 'succPct').style}">${getComparisonStyling(stats.succPct, globalStats.succPct, 'succPct').indicator} ${formatValue(stats.succPct, 1)}%</td>
-                <td style="text-align:center; padding:.3rem; color:#666; border:none;">${formatValue(globalStats.succPct, 1)}%</td>
-              </tr>
-              <tr style="border-bottom:1px solid #ccc;">
-                <td style="padding:.3rem; border:none;">Failure Rate</td>
-                <td style="text-align:center; padding:.3rem; border:none; ${getComparisonStyling(stats.failPct, globalStats.failPct, 'failPct').style}">${getComparisonStyling(stats.failPct, globalStats.failPct, 'failPct').indicator} ${formatValue(stats.failPct, 1)}%</td>
-                <td style="text-align:center; padding:.3rem; color:#666; border:none;">${formatValue(globalStats.failPct, 1)}%</td>
-              </tr>
-              <tr style="border-bottom:1px solid #ccc;">
-                <td style="padding:.3rem; border:none;">Avg Success Margin</td>
-                <td style="text-align:center; padding:.3rem; border:none; ${getComparisonStyling(stats.usuallyPassBy, globalStats.usuallyPassBy, 'successMargin').style}">${getComparisonStyling(stats.usuallyPassBy, globalStats.usuallyPassBy, 'successMargin').indicator} ${formatValue(stats.usuallyPassBy, 2)}</td>
-                <td style="text-align:center; padding:.3rem; color:#666; border:none;">${formatValue(globalStats.usuallyPassBy, 2)}</td>
-              </tr>
-              <tr style="border-bottom:1px solid #ccc;">
-                <td style="padding:.3rem; border:none;">Avg Failure Margin</td>
-                <td style="text-align:center; padding:.3rem; border:none; ${getComparisonStyling(stats.usuallyFailBy, globalStats.usuallyFailBy, 'failMargin').style}">${getComparisonStyling(stats.usuallyFailBy, globalStats.usuallyFailBy, 'failMargin').indicator} ${formatValue(stats.usuallyFailBy, 2)}</td>
-                <td style="text-align:center; padding:.3rem; color:#666; border:none;">${formatValue(globalStats.usuallyFailBy, 2)}</td>
-              </tr>
-              <tr style="border-bottom:1px solid #ccc;">
-                <td style="padding:.3rem; border:none;">Critical Successes</td>
-                <td style="text-align:center; padding:.3rem; border:none; ${getComparisonStyling(stats.critSucc, globalStats.critSucc, 'critSucc').style}">${getComparisonStyling(stats.critSucc, globalStats.critSucc, 'critSucc').indicator} ${stats.critSucc}</td>
-                <td style="text-align:center; padding:.3rem; color:#666; border:none;">${globalStats.critSucc}</td>
+              <tr>
+                <td>Total Rolls</td>
+                <td class="center highlight">${stats.n}</td>
+                <td class="center muted">${globalStats.n}</td>
               </tr>
               <tr>
-                <td style="padding:.3rem; border:none;">Critical Failures</td>
-                <td style="text-align:center; padding:.3rem; border:none; ${getComparisonStyling(stats.critFail, globalStats.critFail, 'critFail').style}">${getComparisonStyling(stats.critFail, globalStats.critFail, 'critFail').indicator} ${stats.critFail}</td>
-                <td style="text-align:center; padding:.3rem; color:#666; border:none;">${globalStats.critFail}</td>
+                <td>Average Roll (3d6)</td>
+                <td class="center" style="${getComparisonStyling(stats.avgTotal, globalStats.avgTotal, 'avgTotal').style}">${getComparisonStyling(stats.avgTotal, globalStats.avgTotal, 'avgTotal').indicator} ${formatValue(stats.avgTotal, 2)}</td>
+                <td class="center muted">${formatValue(globalStats.avgTotal, 2)}</td>
+              </tr>
+              <tr>
+                <td>Success Rate</td>
+                <td class="center" style="${getComparisonStyling(stats.succPct, globalStats.succPct, 'succPct').style}">${getComparisonStyling(stats.succPct, globalStats.succPct, 'succPct').indicator} ${formatValue(stats.succPct, 1)}%</td>
+                <td class="center muted">${formatValue(globalStats.succPct, 1)}%</td>
+              </tr>
+              <tr>
+                <td>Failure Rate</td>
+                <td class="center" style="${getComparisonStyling(stats.failPct, globalStats.failPct, 'failPct').style}">${getComparisonStyling(stats.failPct, globalStats.failPct, 'failPct').indicator} ${formatValue(stats.failPct, 1)}%</td>
+                <td class="center muted">${formatValue(globalStats.failPct, 1)}%</td>
+              </tr>
+              <tr>
+                <td>Avg Success Margin</td>
+                <td class="center" style="${getComparisonStyling(stats.usuallyPassBy, globalStats.usuallyPassBy, 'successMargin').style}">${getComparisonStyling(stats.usuallyPassBy, globalStats.usuallyPassBy, 'successMargin').indicator} ${formatValue(stats.usuallyPassBy, 2)}</td>
+                <td class="center muted">${formatValue(globalStats.usuallyPassBy, 2)}</td>
+              </tr>
+              <tr>
+                <td>Avg Failure Margin</td>
+                <td class="center" style="${getComparisonStyling(stats.usuallyFailBy, globalStats.usuallyFailBy, 'failMargin').style}">${getComparisonStyling(stats.usuallyFailBy, globalStats.usuallyFailBy, 'failMargin').indicator} ${formatValue(stats.usuallyFailBy, 2)}</td>
+                <td class="center muted">${formatValue(globalStats.usuallyFailBy, 2)}</td>
+              </tr>
+              <tr>
+                <td>Critical Successes</td>
+                <td class="center" style="${getComparisonStyling(stats.critSucc, globalStats.critSucc, 'critSucc').style}">${getComparisonStyling(stats.critSucc, globalStats.critSucc, 'critSucc').indicator} ${stats.critSucc}</td>
+                <td class="center muted">${globalStats.critSucc}</td>
+              </tr>
+              <tr>
+                <td>Critical Failures</td>
+                <td class="center" style="${getComparisonStyling(stats.critFail, globalStats.critFail, 'critFail').style}">${getComparisonStyling(stats.critFail, globalStats.critFail, 'critFail').indicator} ${stats.critFail}</td>
+                <td class="center muted">${globalStats.critFail}</td>
+              </tr>
+              <tr>
+                <td>Damage Taken</td>
+                <td class="center" style="${getComparisonStyling(actorStats.totalDamage, globalStats.totalDamage, 'totalDamage').style}">${getComparisonStyling(actorStats.totalDamage, globalStats.totalDamage, 'totalDamage').indicator} ${actorStats.totalDamage}</td>
+                <td class="center muted">${globalStats.totalDamage}</td>
+              </tr>
+              <tr>
+                <td>Fatigue Spent</td>
+                <td class="center" style="${getComparisonStyling(actorStats.totalFatigue, globalStats.totalFatigue, 'totalFatigue').style}">${getComparisonStyling(actorStats.totalFatigue, globalStats.totalFatigue, 'totalFatigue').indicator} ${actorStats.totalFatigue}</td>
+                <td class="center muted">${globalStats.totalFatigue}</td>
               </tr>
             </tbody>
           </table>
         ` : `
-          <div style="font-size:.8rem; line-height:1.3;">
-            <div style="display:flex; justify-content:space-between; padding:.2rem 0; border-bottom:1px solid #eee;">
+          <div class="grs-stats-summary">
+            <div class="grs-stats-row">
               <span>Total Rolls:</span> 
-              <span style="font-weight:600;">${stats.n}</span>
+              <span class="grs-stats-value">${stats.n}</span>
             </div>
-            <div style="display:flex; justify-content:space-between; padding:.2rem 0; border-bottom:1px solid #eee;">
+            <div class="grs-stats-row">
               <span>Average Roll (3d6):</span> 
-              <span style="font-weight:600;">${formatValue(stats.avgTotal, 2)}</span>
+              <span class="grs-stats-value">${formatValue(stats.avgTotal, 2)}</span>
             </div>
-            <div style="display:flex; justify-content:space-between; padding:.2rem 0; border-bottom:1px solid #eee;">
+            <div class="grs-stats-row">
               <span>Successes:</span> 
-              <span style="font-weight:600;">${stats.succ} (${formatValue(stats.succPct, 1)}%)</span>
+              <span class="grs-stats-value">${stats.succ} (${formatValue(stats.succPct, 1)}%)</span>
             </div>
-            <div style="display:flex; justify-content:space-between; padding:.2rem 0; border-bottom:1px solid #eee;">
+            <div class="grs-stats-row">
               <span>Failures:</span> 
-              <span style="font-weight:600;">${stats.fail} (${formatValue(stats.failPct, 1)}%)</span>
+              <span class="grs-stats-value">${stats.fail} (${formatValue(stats.failPct, 1)}%)</span>
             </div>
-            <div style="display:flex; justify-content:space-between; padding:.2rem 0; border-bottom:1px solid #eee;">
+            <div class="grs-stats-row">
               <span>Avg Success Margin:</span> 
-              <span style="font-weight:600;">${formatValue(stats.usuallyPassBy, 2)}</span>
+              <span class="grs-stats-value">${formatValue(stats.usuallyPassBy, 2)}</span>
             </div>
-            <div style="display:flex; justify-content:space-between; padding:.2rem 0; border-bottom:1px solid #eee;">
+            <div class="grs-stats-row">
               <span>Avg Failure Margin:</span> 
-              <span style="font-weight:600;">${formatValue(stats.usuallyFailBy, 2)}</span>
+              <span class="grs-stats-value">${formatValue(stats.usuallyFailBy, 2)}</span>
             </div>
-            <div style="display:flex; justify-content:space-between; padding:.2rem 0; border-bottom:1px solid #eee;">
+            <div class="grs-stats-row">
               <span>Critical Successes:</span> 
-              <span style="font-weight:600;">${stats.critSucc}</span>
+              <span class="grs-stats-value">${stats.critSucc}</span>
             </div>
-            <div style="display:flex; justify-content:space-between; padding:.2rem 0;">
+            <div class="grs-stats-row">
               <span>Critical Failures:</span> 
-              <span style="font-weight:600;">${stats.critFail}</span>
+              <span class="grs-stats-value">${stats.critFail}</span>
+            </div>
+            <div class="grs-stats-row">
+              <span>Damage Taken:</span> 
+              <span class="grs-stats-value">${actorStats.totalDamage}</span>
+            </div>
+            <div class="grs-stats-row">
+              <span>Fatigue Spent:</span> 
+              <span class="grs-stats-value">${actorStats.totalFatigue}</span>
             </div>
           </div>
         `}

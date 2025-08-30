@@ -1,0 +1,543 @@
+/* roll-stats.css - Styles for GURPS Roll Stats module */
+
+/* Settings Dialog Styles */
+.grs-settings-container {
+  padding: 1rem;
+  max-width: 500px;
+  display: grid;
+  gap: 1.5rem;
+}
+
+.grs-settings-section {
+  border: 1px solid var(--color-border, #ccc);
+  border-radius: 6px;
+  padding: 1rem;
+  background: var(--color-bg-option, #f8f9fa);
+}
+
+.grs-settings-title {
+  margin: 0 0 1rem 0;
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: var(--color-text-highlight, #4aa);
+  border-bottom: 1px solid var(--color-border, #ccc);
+  padding-bottom: 0.5rem;
+}
+
+.grs-checkbox-group {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.grs-checkbox-item {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.grs-checkbox-item input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  margin: 0;
+}
+
+.grs-checkbox-item label {
+  margin: 0;
+  cursor: pointer;
+  user-select: none;
+}
+
+.grs-export-section {
+  text-align: center;
+}
+
+.grs-export-btn {
+  padding: 0.75rem 1.5rem;
+  border: 1px solid var(--color-border, #888);
+  border-radius: 6px;
+  cursor: pointer;
+  background: var(--color-control-bg, #f5f5f5);
+  font-size: 1rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  transition: all 0.2s ease;
+}
+
+.grs-export-btn:hover {
+  background: var(--color-control-bg-hover, #eee);
+  transform: translateY(-1px);
+  box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+}
+
+.grs-export-btn:active {
+  transform: translateY(0);
+}
+
+/* Stats Dialog Styles */
+.grs-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0,1fr));
+  gap: 1rem;
+}
+
+.player-entry {
+  transition: all .2s ease-in-out;
+  border-radius: 4px;
+}
+
+.player-entry:hover {
+  background-color: var(--color-control-bg-hover, rgba(233,236,239,.2));
+  transform: translateY(-2px);
+  box-shadow: 0 3px 10px rgba(0,0,0,.2);
+}
+
+.grs-print-btn {
+  padding: .5rem .75rem;
+  border: 1px solid var(--color-border, #888);
+  border-radius: 6px;
+  cursor: pointer;
+  background: var(--color-control-bg, #f5f5f5);
+}
+
+.grs-print-btn:hover {
+  background: var(--color-control-bg-hover, #eee);
+}
+
+/* Player Stat Card Styles */
+.player-stat-card {
+  padding: 1rem;
+  border-radius: 6px;
+  border-left: 3px solid;
+}
+
+.player-stat-card h3 {
+  margin: 0 0 .5rem 0;
+  color: var(--color-text-highlight, #4aa);
+  font-size: 1.2rem;
+  font-weight: 700;
+}
+
+/* Actor Image Styles */
+.grs-actor-image-large {
+  width: 60px;
+  height: 60px;
+  border-radius: 50%;
+  margin-right: .5rem;
+  object-fit: cover;
+}
+
+.grs-actor-image-small {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  margin-right: .5rem;
+  object-fit: cover;
+}
+
+.grs-actor-image-medium {
+  width: 50px;
+  height: 50px;
+  border-radius: 50%;
+  margin-right: .75rem;
+  object-fit: cover;
+}
+
+/* Stats Container Styles */
+.grs-stats-container {
+  padding: 1rem;
+  display: grid;
+  gap: 1rem;
+}
+
+.grs-stats-header {
+  text-align: center;
+  margin-bottom: 1rem;
+  border-bottom: 2px solid #ccc;
+  padding-bottom: 1rem;
+}
+
+.grs-stats-header h2 {
+  margin: 0;
+  font-size: 1.5rem;
+}
+
+.grs-stats-header p {
+  margin: .5rem 0;
+  color: #666;
+  font-size: .9rem;
+}
+
+/* No Data Message Styles */
+.grs-no-data {
+  padding: 2rem;
+  text-align: center;
+}
+
+.grs-no-data p {
+  margin: 0;
+  color: #666;
+  font-style: italic;
+}
+
+.grs-no-data-info {
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  padding: 1rem;
+  margin-bottom: 1rem;
+  text-align: center;
+}
+
+.grs-no-data-info p {
+  margin: 0;
+  color: #666;
+  font-style: italic;
+}
+
+.grs-no-data-info p:first-child {
+  margin-bottom: 0.5rem;
+}
+
+.grs-no-data-info p:last-child {
+  margin: 0.5rem 0 0 0;
+  font-size: 0.9rem;
+}
+
+/* Attribute Tracking Section */
+.grs-attribute-section {
+  padding: 1rem;
+}
+
+.grs-attribute-section h4 {
+  margin: 0 0 0.75rem 0;
+  font-size: 1rem;
+}
+
+.grs-attribute-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: .75rem;
+}
+
+.grs-attribute-card {
+  text-align: center;
+  padding: 0.5rem;
+  border-radius: 4px;
+  border-left: 3px solid;
+}
+
+.grs-attribute-card-damage {
+  background: rgba(220, 53, 69, 0.1);
+  border-left-color: #dc3545;
+}
+
+.grs-attribute-card-fatigue {
+  background: rgba(255, 193, 7, 0.1);
+  border-left-color: #ffc107;
+}
+
+.grs-attribute-value {
+  font-size: 1.2rem;
+  font-weight: 700;
+}
+
+.grs-attribute-value-damage {
+  color: #dc3545;
+}
+
+.grs-attribute-value-fatigue {
+  color: #ffc107;
+}
+
+.grs-attribute-label {
+  font-size: 0.9rem;
+}
+
+/* Chat Stats Styles */
+.grs-chat-stats {
+  border-radius: 8px;
+  padding: 1rem;
+  margin: .5rem 0;
+  max-width: 420px;
+}
+
+.grs-chat-stats-header {
+  display: flex;
+  align-items: center;
+  padding: .75rem;
+  border-bottom: 2px solid #ccc;
+}
+
+.grs-chat-stats-title {
+  margin: 0;
+  font-size: 1.1rem;
+  color: var(--color-text-highlight, #4aa);
+}
+
+.grs-chat-stats-subtitle {
+  font-size: .9rem;
+  color: #666;
+  margin-top: .25rem;
+}
+
+.grs-chat-stats-meta {
+  font-size: .8rem;
+  color: #999;
+  margin-top: .25rem;
+}
+
+/* Ranking Styles */
+.grs-ranking-group {
+  margin: .5rem 0;
+  border-radius: 6px;
+  background: var(--color-bg-option, #f8f9fa);
+  border: 1px solid #ddd;
+}
+
+.grs-ranking-header {
+  display: flex;
+  align-items: center;
+  padding: .75rem;
+  background: var(--color-control-bg, #e9ecef);
+  border-radius: 6px 6px 0 0;
+  border-bottom: 2px solid #ccc;
+}
+
+.grs-ranking-number {
+  font-weight: 700;
+  font-size: 1.1rem;
+  color: var(--color-text-highlight, #4aa);
+  min-width: 30px;
+}
+
+.grs-ranking-title {
+  font-weight: 600;
+  margin-left: .5rem;
+}
+
+.grs-ranking-players {
+  padding: 0;
+}
+
+.grs-ranking-players.single-player {
+  padding: .5rem;
+}
+
+.grs-ranking-player {
+  display: flex;
+  align-items: center;
+  padding: .5rem;
+  margin: 0;
+}
+
+.grs-ranking-player:not(:last-child) {
+  border-bottom: 1px solid #eee;
+}
+
+.grs-ranking-player-info {
+  display: block;
+}
+
+.grs-ranking-player-name {
+  font-weight: bold;
+}
+
+.grs-ranking-player-user {
+  color: #666;
+  font-size: .9rem;
+}
+
+.grs-ranking-player-metric {
+  font-weight: 700;
+}
+
+/* Stats Table Styles */
+.grs-stats-table {
+  width: 100%;
+  font-size: .8rem;
+  line-height: 1.3;
+  border-collapse: collapse;
+}
+
+.grs-stats-table thead {
+  border: none !important;
+  background: #33333356;
+  color: #f4f4f4;
+}
+
+.grs-stats-table thead tr {
+  border: none !important;
+}
+
+.grs-stats-table th {
+  text-align: left;
+  padding: .4rem;
+  font-weight: 600;
+  border: none !important;
+}
+
+.grs-stats-table th.center {
+  text-align: center;
+}
+
+.grs-stats-table tbody tr {
+  border-bottom: 1px solid #ccc;
+}
+
+.grs-stats-table tbody tr:last-child {
+  border-bottom: none;
+}
+
+.grs-stats-table td {
+  padding: .3rem;
+  border: none;
+}
+
+.grs-stats-table td.center {
+  text-align: center;
+}
+
+.grs-stats-table td.highlight {
+  font-weight: 600;
+}
+
+.grs-stats-table td.muted {
+  color: #666;
+}
+
+/* Stats Summary Styles */
+.grs-stats-summary {
+  font-size: .8rem;
+  line-height: 1.3;
+}
+
+.grs-stats-row {
+  display: flex;
+  justify-content: space-between;
+  padding: .2rem 0;
+  border-bottom: 1px solid #eee;
+}
+
+.grs-stats-row:last-child {
+  border-bottom: none;
+}
+
+.grs-stats-value {
+  font-weight: 600;
+}
+
+/* Utility Classes */
+.grs-text-center {
+  text-align: center;
+}
+
+.grs-text-muted {
+  color: #666;
+}
+
+.grs-text-small {
+  font-size: .9rem;
+}
+
+.grs-text-italic {
+  font-style: italic;
+}
+
+.grs-mb-1 {
+  margin-bottom: 1rem;
+}
+
+.grs-mt-1 {
+  margin-top: 1rem;
+}
+
+.grs-p-1 {
+  padding: 1rem;
+}
+
+.grs-border-bottom {
+  border-bottom: 1px solid #ccc;
+}
+
+.grs-hr {
+  margin: 1rem 0;
+  border: none;
+  border-top: 1px solid #ccc;
+}
+
+/* Dialog Content Styles */
+.grs-dialog-content {
+  padding: 0.5rem;
+  display: grid;
+  gap: 0.5rem;
+}
+
+.grs-player-select-row {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.grs-player-select-row label {
+  margin: 0;
+}
+
+.grs-player-select-row select {
+  flex: 1;
+  padding: 0.25rem;
+  border: 1px solid var(--color-border, #ccc);
+  border-radius: 4px;
+  background: var(--color-control-bg, #fff);
+}
+
+.grs-stats-grid-2col {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.5rem;
+}
+
+.grs-chart-container {
+  width: 100%;
+  height: 300px;
+  max-width: 100%;
+}
+
+.grs-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 0.25rem;
+}
+
+.grs-table th,
+.grs-table td {
+  padding: 0.25rem;
+  border: 1px solid var(--color-border, #ccc);
+  text-align: center;
+}
+
+.grs-table th {
+  background: var(--color-control-bg, #f5f5f5);
+  font-weight: 600;
+}
+
+/* Chat Stats Enhanced Styles */
+.grs-chat-stats {
+  border-radius: 8px;
+  padding: 1rem;
+  margin: 0.5rem 0;
+  max-width: 420px;
+}
+
+.grs-chat-stats-centered-title {
+  text-align: center;
+  margin: 0 0 1rem 0;
+  font-size: 1.2rem;
+}
+
+/* Player Ranking Entry Styles */
+.grs-player-ranking-entry {
+  display: flex;
+  align-items: center;
+  padding: 0.5rem;
+  margin: 0.25rem 0;
+}

@@ -1,5 +1,5 @@
 // effectManager.js - Centralized generic effect management for GURPS Roll Stats
-import { MOD_ID, SET_USE_EFFECT_ANIMATION, SET_USE_EFFECT_ICONS, SET_EFFECT_COUNTERS, SET_EFFECT_ACTIVE_USERS, SET_EFFECT_THEME, SET_PLAYER_SHOW_COUNTERS, SET_PLAYER_SHOW_ANIMATIONS, SET_PLAYER_HIDE_EFFECT_EMOJIS, SET_FULL_BAR_MAX_POINTS, SET_GLOBAL_ACTIVE_TEXT_FALLBACK, USER_CUSTOM_ACTIVE_TEXT_FLAG_KEY } from './constants.js';
+import { MOD_ID, SET_LOG, SET_ACTIVE, SET_USE_EFFECT_ANIMATION, SET_USE_EFFECT_ICONS, SET_EFFECT_COUNTERS, SET_EFFECT_ACTIVE_USERS, SET_EFFECT_THEME, SET_PLAYER_SHOW_COUNTERS, SET_PLAYER_SHOW_ANIMATIONS, SET_PLAYER_HIDE_EFFECT_EMOJIS, SET_FULL_BAR_MAX_POINTS, SET_GLOBAL_ACTIVE_TEXT_FALLBACK, USER_CUSTOM_ACTIVE_TEXT_FLAG_KEY, SET_PLAYER_PAUSE_ROLLS } from './constants.js';
 
 // Module-level socket instance
 let _socket = null;
@@ -84,14 +84,6 @@ export function getUserCustomActiveText(userId) {
     console.warn(`${MOD_ID}: Error getting global fallback custom text:`, e);
     return "X IS ON FIRE";
   }
-}
-
-/**
- * REMOVED: No longer needed - settings system handles this
- */
-export function initializeUserCustomTextSettings() {
-  // This function is no longer needed since we use the main setting system
-  console.log(`${MOD_ID}: Custom text now handled by main settings system`);
 }
 
 /**
@@ -809,8 +801,6 @@ export function applyEffectToSpecificMessage(messageElement, userId, effectName)
   // Handle visual effects only when user is active AND animation is enabled
   if (useAnimation && isActive && !messageElement.classList.contains(`grs-on-${effectName}-v10`)) {
     effect.applyVisualEffectsToMessage(messageElement, user.name);
-  } else if (!useAnimation || !isActive) {
-    effect.removeVisualEffectsFromMessage(messageElement);
   }
 }
 
@@ -869,7 +859,8 @@ export function applyEffectToUserMessages(userId, effectName) {
  * @param {Object} setting - The setting that changed
  */
 export function handleSettingChange(setting) {
-  // Settings changes now only affect new messages, not existing ones
+  // Settings changes only affect new messages, not existing ones
+  console.log(`${MOD_ID}: Setting changed: ${setting.key} - affects new messages only`);
 }
 
 /* ---------------------- Cleanup Functions ---------------------- */

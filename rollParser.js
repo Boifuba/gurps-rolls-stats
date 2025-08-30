@@ -1,47 +1,24 @@
-// rollParser.js - Message parsing logic for GURPS 3d6 roll detection and data extraction
+// rollParser.js - Message parsing logic for GURPS 3d6 roll detection using GURPS.lastTargetedRoll
+import { MOD_ID } from './constants.js';
 import { stripHtml } from './utils.js';
 
 /**
- * Determines if a chat message represents a 3d6 roll with margin information
+ * Determines if a chat message represents a 3d6 roll by checking GURPS.lastTargetedRoll
  * @param {ChatMessage} msg - The chat message to analyze
  * @returns {boolean} True if this is a parseable 3d6 roll message
  */
 export function isRollMessage(msg) {
-  // Check standard Foundry roll flags
-  if (msg.isRoll) return true;
-  if (Array.isArray(msg.rolls) && msg.rolls.length) return true;
-  if (msg.roll) return true;
+  // Check if GURPS is available and if lastTargetedRoll has data
+  if (typeof GURPS === 'undefined') {
+    return false;
+  }
   
-  const text = stripHtml(msg.content ?? "");
+  // Only return true if GURPS.lastTargetedRoll exists and has the data we need
+  const hasLastTargetedRoll = GURPS.lastTargetedRoll && 
+    typeof GURPS.lastTargetedRoll === 'object' &&
+    Number.isFinite(GURPS.lastTargetedRoll.rtotal);
   
-  // Check for GGA (GURPS Game Aid) format: "Rolled (x,y,z) = total"
-  if (/Rolled\s*\(\s*\d\s*,\s*\d\s*,\s*\d\s*\)\s*=\s*\d+/i.test(text)) return true;
-  
-  // Must contain 3d6 reference
-  if (!/\b3d6\b/i.test(text)) return false;
-  
-  // Must also contain margin information (success/failure with degree)
-  return checkForMarginInfo(text);
-}
-
-/**
- * Checks if the message text contains margin of success/failure information
- * @param {string} text - The message text to analyze
- * @returns {boolean} True if margin information is present
- */
-function checkForMarginInfo(text) {
-  // Check for "Made it by X" or "Missed it by X" patterns
-  if (/Made it by\s+(-?\d+)/i.test(text)) return true;
-  if (/Missed it by\s+(-?\d+)/i.test(text)) return true;
-  
-  // Check for MoS (Margin of Success) or MoF (Margin of Failure) abbreviations
-  if (/\bMoS\b\s*[:=]?\s*(-?\d+)/i.test(text)) return true;
-  if (/\bMoF\b\s*[:=]?\s*(-?\d+)/i.test(text)) return true;
-  
-  // Check for explicit Success!/Failure! indicators (usually accompanied by margin)
-  if (/Success!/i.test(text) || /Failure!/i.test(text)) return true;
-  
-  return false;
+  return hasLastTargetedRoll;
 }
 
 /**
@@ -65,61 +42,57 @@ export function getActorName(speaker) {
 }
 
 /**
- * Parses a roll message and extracts relevant data for statistics
+ * Parses a roll message using GURPS.lastTargetedRoll object exclusively
  * @param {ChatMessage} msg - The chat message to parse
- * @returns {Object|null} Parsed roll data or null if parsing failed
+ * @returns {Object|null} Parsed roll data or null if GURPS object not available
  */
 export function parseMessage(msg) {
+  // Use GURPS.lastTargetedRoll if available
+  if (typeof GURPS !== 'undefined' && GURPS.lastTargetedRoll) {
+    console.log(`${MOD_ID}: [DEBUG] Using GURPS.lastTargetedRoll data directly`);
+    return parseFromGurpsObject(msg, GURPS.lastTargetedRoll);
+  }
+  
+  console.log(`${MOD_ID}: [DEBUG] GURPS.lastTargetedRoll not available`);
+  return null;
+}
+
+/**
+ * Parses roll data from GURPS.lastTargetedRoll object
+ * @param {ChatMessage} msg - The chat message
+ * @param {Object} gurpsRoll - The GURPS.lastTargetedRoll object
+ * @returns {Object} Parsed roll data
+ */
+function parseFromGurpsObject(msg, gurpsRoll) {
   const timestamp = new Date((msg.timestamp ?? Date.now())).toISOString();
   const user = getUserName(msg);
   const actor = getActorName(msg.speaker ?? {});
   const flavor = msg.flavor ?? "";
   const text = stripHtml(msg.content ?? "");
 
-  // Extract roll data from Foundry roll object or message text
-  const rollObject = (msg.rolls?.[0]) || msg.roll || null;
-  const formula = rollObject?.formula ?? "3d6";
+  // Extract data directly from GURPS object
+  const total = gurpsRoll.rtotal;
+  const formula = "3d6"; // GURPS always uses 3d6
   
-  // Get total from roll object or parse from text
-  const total = Number.isFinite(rollObject?.total) ? rollObject.total : (() => {
-    const match = text.match(/=\s*(\d+)\s*\.?/);
-    return match ? parseInt(match[1]) : null;
-  })();
-
-  // Extract individual dice values (for GGA format)
+  // Parse dice from rolls string (format: "4,5,4")
   let dice = null;
-  const diceMatch = text.match(/Rolled\s*\(\s*(\d)\s*,\s*(\d)\s*,\s*(\d)\s*\)\s*=\s*\d+/i);
-  if (diceMatch) {
-    dice = [parseInt(diceMatch[1]), parseInt(diceMatch[2]), parseInt(diceMatch[3])];
-  }
-
-  // Determine success/failure state
-  let success = null;
-  if (/Success!/i.test(text)) success = true;
-  if (/Failure!/i.test(text)) success = false;
-
-  // Extract margin of success/failure
-  let margin = null;
-  const madeMatch = text.match(/Made it by\s+(-?\d+)/i);
-  const missedMatch = text.match(/Missed it by\s+(-?\d+)/i);
-  
-  if (madeMatch) {
-    margin = parseInt(madeMatch[1]);
-  } else if (missedMatch) {
-    margin = parseInt(missedMatch[1]);
-  }
-
-  // Try MoS/MoF patterns if margin not found
-  if (margin == null) {
-    const mosMatch = text.match(/\bMoS\b\s*[:=]?\s*(-?\d+)/i);
-    const mofMatch = text.match(/\bMoF\b\s*[:=]?\s*(-?\d+)/i);
-    
-    if (mosMatch) {
-      margin = parseInt(mosMatch[1]);
-    } else if (mofMatch) {
-      margin = -Math.abs(parseInt(mofMatch[1])); // Ensure MoF is negative
+  if (gurpsRoll.rolls && typeof gurpsRoll.rolls === 'string') {
+    const diceValues = gurpsRoll.rolls.split(',').map(d => parseInt(d.trim()));
+    if (diceValues.length === 3 && diceValues.every(d => d >= 1 && d <= 6)) {
+      dice = diceValues;
     }
   }
+
+  // Extract success/failure directly from GURPS object
+  // Based on Object.example: failure: true means it was a failure
+  const success = gurpsRoll.failure === false ? true : (gurpsRoll.failure === true ? false : null);
+  
+  // Extract margin directly from GURPS object
+  const margin = Number.isFinite(gurpsRoll.margin) ? gurpsRoll.margin : null;
+  
+  // Extract critical outcomes directly from GURPS object
+  const isCritSuccess = gurpsRoll.isCritSuccess === true;
+  const isCritFailure = gurpsRoll.isCritFailure === true;
 
   return { 
     timestamp, 
@@ -131,6 +104,8 @@ export function parseMessage(msg) {
     success, 
     margin, 
     flavor, 
-    text 
+    text,
+    isCritSuccess,
+    isCritFailure
   };
 }

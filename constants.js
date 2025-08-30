@@ -12,6 +12,10 @@ export const SET_EFFECT_THEME = "effect-theme";
 export const SET_FULL_BAR_MAX_POINTS = "full-bar-max-points";
 export const SET_GLOBAL_ACTIVE_TEXT_FALLBACK = "global-active-text-fallback";
 
+// Damage and fatigue tracking
+export const SET_DAMAGE_LOG = "damage-log";
+export const SET_FATIGUE_LOG = "fatigue-log";
+
 // User flag key for storing individual player's custom text
 export const USER_CUSTOM_ACTIVE_TEXT_FLAG_KEY = "custom-active-text";
 

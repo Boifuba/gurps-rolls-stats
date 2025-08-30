@@ -11,6 +11,7 @@ import { MiniChart } from './chart-mini.js';
  */
 export function drawRollsChart(containerEl, userFilter) {
   const rowsNow = game.settings.get(MOD_ID, SET_LOG) ?? [];
+  const hideGMData = game.settings.get(MOD_ID, "hide-gm-data") ?? false;
 
   // Clear container
   containerEl.innerHTML = '';
@@ -20,10 +21,21 @@ export function drawRollsChart(containerEl, userFilter) {
 
   if (!userFilter) {
     // Show all players for comparison when no specific user is selected
-    const uniqueUsers = [...new Set(rowsNow.map(r => r.user))].sort();
+    let uniqueUsers = [...new Set(rowsNow.map(r => r.user))];
+    
+    // Filter out GM users if hideGMData is true
+    if (hideGMData) {
+      const gmUserNames = game.users.filter(user => user.isGM).map(user => user.name);
+      uniqueUsers = uniqueUsers.filter(userName => !gmUserNames.includes(userName));
+    }
+    
+    uniqueUsers.sort();
     
     if (uniqueUsers.length === 0) {
-      containerEl.innerHTML = '<p style="text-align: center; color: #666; padding: 2rem;">No roll data available</p>';
+      const noDataMessage = hideGMData ? 
+        'No player data available (GM data is hidden)' : 
+        'No roll data available';
+      containerEl.innerHTML = `<p style="text-align: center; color: #666; padding: 2rem;">${noDataMessage}</p>`;
       return null;
     }
 
@@ -37,7 +49,7 @@ export function drawRollsChart(containerEl, userFilter) {
 
     // Prepare series data for each user
     const series = uniqueUsers.map((user, index) => {
-      const userStats = computeStats(rowsNow, user);
+      const userStats = computeStats(rowsNow, user, hideGMData);
       const data = labels.map(total => userStats.totals[total] || 0);
       
       return {
@@ -61,7 +73,7 @@ export function drawRollsChart(containerEl, userFilter) {
 
   } else {
     // Show single user with combo chart (bars + line)
-    const stats = computeStats(rowsNow, userFilter);
+    const stats = computeStats(rowsNow, userFilter, hideGMData);
     const data = labels.map(total => stats.totals[total] || 0);
 
     // Create bar chart (no line overlay for individual users)
@@ -82,6 +94,8 @@ export function drawRollsChart(containerEl, userFilter) {
  */
 export async function exportChartAsPNG(userFilter = "", filename = "gurps-3d6-distribution.png") {
   try {
+    const hideGMData = game.settings.get(MOD_ID, "hide-gm-data") ?? false;
+    
     // Create temporary hidden container for chart rendering
     const tempDiv = document.createElement('div');
     tempDiv.style.position = 'absolute';
@@ -95,8 +109,18 @@ export async function exportChartAsPNG(userFilter = "", filename = "gurps-3d6-di
     // Get current roll data
     const currentRolls = game.settings.get(MOD_ID, SET_LOG) ?? [];
     
-    if (currentRolls.length === 0) {
-      ui.notifications?.warn("No roll data available to export.");
+    // Check if we have data after potential GM filtering
+    let dataToCheck = currentRolls;
+    if (hideGMData) {
+      const gmUserNames = game.users.filter(user => user.isGM).map(user => user.name);
+      dataToCheck = currentRolls.filter(r => !gmUserNames.includes(r.user));
+    }
+    
+    if (dataToCheck.length === 0) {
+      const noDataMessage = hideGMData ? 
+        "No player data available to export (GM data is hidden)." : 
+        "No roll data available to export.";
+      ui.notifications?.warn(noDataMessage);
       tempDiv.remove();
       return;
     }
