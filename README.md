@@ -1,3 +1,4 @@
+[![Donate](https://img.shields.io/badge/Donate-Sponsor%20on%20GitHub-black?logo=github)](https://github.com/sponsors/Boifuba)
 # GURPS Roll Stats
 
 A comprehensive Foundry VTT module for collecting, analyzing, and visualizing 3d6 roll statistics in GURPS games, featuring an innovative "On Fire" effect system and attribute tracking.
@@ -390,3 +391,10 @@ This module is provided as-is for the Foundry VTT community. Please respect the 
 Thanks to Tuvulu for the idea — at first, I had no intention of making it, but you won me over with persistence!
 
 *"May your rolls be ever in your favor!"*
+
+
+<p align="center">
+  <a href="https://github.com/sponsors/Boifuba">
+    <img src="https://img.shields.io/badge/Sponsor-30363D?style=for-the-badge&logo=GitHub-Sponsors&logoColor=#white)](https://github.com/sponsors/Boifuba" width="200" alt="Apoie este projeto"/>
+  </a>
+</p>
