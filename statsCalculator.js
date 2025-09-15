@@ -1,20 +1,6 @@
 // statsCalculator.js — Statistics calculation logic
 
-/**
- * Gets all GM user IDs
- * @returns {string[]} Array of GM user IDs
- */
-function getGMUserIds() {
-  return game.users.filter(user => user.isGM).map(user => user.id);
-}
-
-/**
- * Gets all GM user names
- * @returns {string[]} Array of GM user names
- */
-function getGMUserNames() {
-  return game.users.filter(user => user.isGM).map(user => user.name);
-}
+import { getGMUserNames } from './foundryUtils.js';
 
 export function computeStats(rows, userFilter, hideGMData = false) {
   // Filter out GM data if hideGMData is true
@@ -44,9 +30,9 @@ export function computeStats(rows, userFilter, hideGMData = false) {
     } else if (r.success === false) {
       fail++; if (Number.isFinite(r.margin) && r.margin < 0) { sumMoFabs += Math.abs(r.margin); nMoF++; }
     }
-    const txt = (r.text || "");
-    if (/Critical\s+Success!/i.test(txt)) critSucc++;
-    if (/Critical\s+Failure!/i.test(txt)) critFail++;
+    // Use parsed flags instead of regex on text
+    if (r.isCritSuccess === true) critSucc++;
+    if (r.isCritFailure === true) critFail++;
   }
 
   let sum = 0, cnt = 0;

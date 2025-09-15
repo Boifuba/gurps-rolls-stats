@@ -19,7 +19,6 @@
   margin: 0 0 1rem 0;
   font-size: 1.1rem;
   font-weight: 600;
-  color: var(--color-text-highlight, #4aa);
   border-bottom: 1px solid var(--color-border, #ccc);
   padding-bottom: 0.5rem;
 }
@@ -381,7 +380,6 @@
 }
 
 .grs-stats-table tbody tr {
-  border-bottom: 1px solid #ccc;
 }
 
 .grs-stats-table tbody tr:last-child {
@@ -415,7 +413,6 @@
   display: flex;
   justify-content: space-between;
   padding: .2rem 0;
-  border-bottom: 1px solid #eee;
 }
 
 .grs-stats-row:last-child {
@@ -456,13 +453,11 @@
 }
 
 .grs-border-bottom {
-  border-bottom: 1px solid #ccc;
 }
 
 .grs-hr {
   margin: 1rem 0;
   border: none;
-  border-top: 1px solid #ccc;
 }
 
 /* Dialog Content Styles */
@@ -485,9 +480,7 @@
 .grs-player-select-row select {
   flex: 1;
   padding: 0.25rem;
-  border: 1px solid var(--color-border, #ccc);
   border-radius: 4px;
-  background: var(--color-control-bg, #fff);
 }
 
 .grs-stats-grid-2col {
@@ -511,12 +504,10 @@
 .grs-table th,
 .grs-table td {
   padding: 0.25rem;
-  border: 1px solid var(--color-border, #ccc);
   text-align: center;
 }
 
 .grs-table th {
-  background: var(--color-control-bg, #f5f5f5);
   font-weight: 600;
 }
 

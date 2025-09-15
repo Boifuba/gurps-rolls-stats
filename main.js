@@ -157,12 +157,8 @@ async function updateRollLogGM(rollEntry) {
 /* ---------------------- Module Settings Registration ---------------------- */
 
 Hooks.once("init", async () => {
-  console.log(`${MOD_ID}: Initializing module...`);
-  
   // Register socketlib handlers
   Hooks.once("socketlib.ready", () => {
-    console.log(`${MOD_ID}: Registering socketlib handlers...`);
-    
     // Register socket handlers for effect system and get the socket instance
     const socketlibModule = game.modules.get('socketlib');
     if (socketlibModule) {
@@ -175,12 +171,9 @@ Hooks.once("init", async () => {
         updateRollLog: updateRollLogGM,
         updateDamageLog: attributesTracking.updateDamageLogGM,
         updateFatigueLog: attributesTracking.updateFatigueLogGM,
-        updateDamageLog: attributesTracking.updateDamageLogGM,
-        updateFatigueLog: attributesTracking.updateFatigueLogGM,
         
         // Client handler for visual effects (executed on all clients)
         triggerVisualEffectForClient: (userId, effectName) => {
-          console.log(`${MOD_ID}: [SOCKETLIB] Triggering visual effect for user ${userId} with theme ${effectName}`);
           // Only show notification, don't re-apply effects to old messages
           const user = game.users.get(userId);
           const effect = effectManager.getEffect(effectName);
@@ -196,48 +189,15 @@ Hooks.once("init", async () => {
         
         // Broadcast setting changes to all clients
         broadcastEffectUpdate: (userId, effectName) => {
-          console.log(`${MOD_ID}: [SOCKETLIB] Broadcasting effect update for user ${userId} with theme ${effectName}`);
           // Settings updates no longer re-apply effects to old messages
-          console.log(`${MOD_ID}: [SOCKETLIB] Effect update broadcast received - affects new messages only`);
         }
       });
       
       // Provide the socket instance to effectManager and attributesTracking
       effectManager.setSocketLibInstance(gurpsRollStatsSocket);
       attributesTracking.setSocketLibInstance(gurpsRollStatsSocket);
-      
-      console.log(`${MOD_ID}: Socketlib handlers registered successfully`);
     } else {
       console.error(`${MOD_ID}: SocketLib module not found!`);
-    }
-  });
-
-  // Register socketlib handlers (legacy fallback)
-  Hooks.once("socketlib.ready", () => {
-    // This hook is kept for compatibility but the main registration happens above
-    if (!gurpsRollStatsSocket) {
-      console.warn(`${MOD_ID}: Fallback socketlib registration - this should not happen`);
-      
-      const socketlibModule = game.modules.get('socketlib');
-      if (socketlibModule) {
-        gurpsRollStatsSocket = socketlibModule.registerModule(MOD_ID, {
-      // GM-only handlers for data updates
-      updateEffectCounter: effectManager.handleUpdateEffectCounterGM,
-      handleCriticalSuccess: effectManager.handleCriticalSuccessGM,
-      handleEffectLoss: effectManager.handleEffectLossGM,
-      clearUserEffect: effectManager.clearUserEffectGM,
-      updateRollLog: updateRollLogGM,
-      
-      // Client handler for visual effects (executed on all clients)
-      triggerVisualEffectForClient: (userId, effectName) => {
-        console.log(`${MOD_ID}: [SOCKETLIB] Triggering visual effect for user ${userId} with theme ${effectName}`);
-        effectManager.applyEffectToUserMessages(userId, effectName);
-      }
-        });
-        
-        effectManager.setSocketLibInstance(gurpsRollStatsSocket);
-        attributesTracking.setSocketLibInstance(gurpsRollStatsSocket);
-      }
     }
   });
 
@@ -283,7 +243,6 @@ Hooks.once("init", async () => {
     restricted: false
   });
 
-  console.log(`${MOD_ID}: Settings registered successfully`);
 
   // UI integration
   Hooks.on("renderChatLog", (_app, html) => {
@@ -389,7 +348,6 @@ function registerSettings() {
     default: "X IS ON FIRE",
     onChange: () => {
       // Text changes only affect new messages, not existing ones
-      console.log(`${MOD_ID}: Global active text changed - affects new messages only`);
     }
   });
   
@@ -409,7 +367,6 @@ function registerSettings() {
         await game.user.setFlag(MOD_ID, USER_CUSTOM_ACTIVE_TEXT_FLAG_KEY, newValue);
         
         // Text changes only affect new messages, not existing ones
-        console.log(`${MOD_ID}: Personal active text changed - affects new messages only`);
       } catch (e) {
         console.error(`${MOD_ID}: Error setting user flag for custom text:`, e);
         ui.notifications?.error("Failed to save custom active text");
@@ -496,10 +453,7 @@ Hooks.on("init", () => {
     }
 
     if (command === "/stats reset") {
-      game.settings.set(MOD_ID, SET_LOG, []).then(() => {
-        ui.notifications?.info("Roll statistics cleared.");
-        showStatsDialog();
-      });
+      effectManager.completeModuleReset();
       return false;
     }
 
@@ -521,103 +475,46 @@ Hooks.on("init", () => {
 /* ---------------------- Roll Logging with Effect System ---------------------- */
 
 Hooks.on("ready", () => {
-  console.log(`${MOD_ID}: Module ready, initializing roll logging...`);
-  
   // Clean up any corrupted effect data on startup
   if (game.user.isGM) {
     effectManager.cleanupCorruptedEffectData();
   }
-  
-  console.log(`${MOD_ID}: [DEBUG] Module ready - effects will be applied to new messages and re-applied to existing ones`);
-  
   Hooks.on("createChatMessage", async (message) => {
     try {
-      // ===== DETAILED DEBUG LOGGING =====
-      console.log(`${MOD_ID}: [DETAILED DEBUG] ===== NEW MESSAGE PROCESSING =====`);
-      console.log(`${MOD_ID}: [DETAILED DEBUG] Message ID: ${message.id}`);
-      console.log(`${MOD_ID}: [DETAILED DEBUG] Message user: ${message.user ?? message.userId}`);
-      console.log(`${MOD_ID}: [DETAILED DEBUG] Message content preview: ${(message.content ?? "").substring(0, 100)}...`);
-      
-      // Check GURPS object availability
-      console.log(`${MOD_ID}: [DETAILED DEBUG] typeof GURPS:`, typeof GURPS);
-      console.log(`${MOD_ID}: [DETAILED DEBUG] GURPS exists:`, typeof GURPS !== 'undefined');
-      
-      if (typeof GURPS !== 'undefined') {
-        console.log(`${MOD_ID}: [DETAILED DEBUG] GURPS.lastTargetedRoll exists:`, !!GURPS.lastTargetedRoll);
-        
-        if (GURPS.lastTargetedRoll) {
-          console.log(`${MOD_ID}: [DETAILED DEBUG] GURPS.lastTargetedRoll FULL OBJECT:`, JSON.stringify(GURPS.lastTargetedRoll, null, 2));
-          console.log(`${MOD_ID}: [DETAILED DEBUG] GURPS.lastTargetedRoll.rtotal:`, GURPS.lastTargetedRoll.rtotal);
-          console.log(`${MOD_ID}: [DETAILED DEBUG] GURPS.lastTargetedRoll.rolls:`, GURPS.lastTargetedRoll.rolls);
-          console.log(`${MOD_ID}: [DETAILED DEBUG] GURPS.lastTargetedRoll.margin:`, GURPS.lastTargetedRoll.margin);
-          console.log(`${MOD_ID}: [DETAILED DEBUG] GURPS.lastTargetedRoll.failure:`, GURPS.lastTargetedRoll.failure);
-          console.log(`${MOD_ID}: [DETAILED DEBUG] GURPS.lastTargetedRoll.isCritSuccess:`, GURPS.lastTargetedRoll.isCritSuccess);
-          console.log(`${MOD_ID}: [DETAILED DEBUG] GURPS.lastTargetedRoll.isCritFailure:`, GURPS.lastTargetedRoll.isCritFailure);
-        } else {
-          console.log(`${MOD_ID}: [DETAILED DEBUG] GURPS.lastTargetedRoll is null/undefined`);
-        }
-      } else {
-        console.log(`${MOD_ID}: [DETAILED DEBUG] GURPS object not available`);
-      }
-      
       // Check global recording state
       const globalActive = game.settings.get(MOD_ID, SET_ACTIVE);
-      console.log(`${MOD_ID}: [DETAILED DEBUG] Global recording active:`, globalActive);
       if (!globalActive) {
-        console.log(`${MOD_ID}: [DETAILED DEBUG] SKIPPING - global recording disabled`);
         return;
       }
       
       // Check individual player recording state (only for non-GM users)
       const playerPaused = game.settings.get(MOD_ID, SET_PLAYER_PAUSE_ROLLS);
-      console.log(`${MOD_ID}: [DETAILED DEBUG] Is GM:`, game.user.isGM);
-      console.log(`${MOD_ID}: [DETAILED DEBUG] Player paused:`, playerPaused);
       if (!game.user.isGM && playerPaused) {
-        console.log(`${MOD_ID}: [DETAILED DEBUG] SKIPPING - player recording paused`);
         return;
       }
       
       // Check if this is a roll message
       const isRoll = isRollMessage(message);
-      console.log(`${MOD_ID}: [DETAILED DEBUG] isRollMessage() returned:`, isRoll);
       if (!isRoll) {
-        console.log(`${MOD_ID}: [DETAILED DEBUG] SKIPPING - isRollMessage returned false`);
         return;
       }
 
       // Parse the message
       const parsedEntry = parseMessage(message);
-      console.log(`${MOD_ID}: [DETAILED DEBUG] parseMessage() returned:`, parsedEntry);
-      console.log(`${MOD_ID}: [DETAILED DEBUG] parseMessage() returned type:`, typeof parsedEntry);
-      console.log(`${MOD_ID}: [DETAILED DEBUG] parseMessage() is null:`, parsedEntry === null);
-      console.log(`${MOD_ID}: [DETAILED DEBUG] parseMessage() is undefined:`, parsedEntry === undefined);
-      
       if (!parsedEntry) {
-        console.log(`${MOD_ID}: [DETAILED DEBUG] SKIPPING - parseMessage returned null/undefined`);
-        console.log(`${MOD_ID}: [DETAILED DEBUG] This means GURPS.lastTargetedRoll was not available or invalid`);
         return;
       }
-      
-      console.log(`${MOD_ID}: [DETAILED DEBUG] ===== ROLL DATA SUCCESSFULLY PARSED =====`);
-      console.log(`${MOD_ID}: [DETAILED DEBUG] Parsed roll entry:`, JSON.stringify(parsedEntry, null, 2));
 
       // Skip effect processing for blind rolls (but still log the roll data)
       const isBlindRoll = message.blind === true;
-      console.log(`${MOD_ID}: [DETAILED DEBUG] Is blind roll:`, isBlindRoll);
 
       // Store the roll data
       if (game.user.isGM) {
-        console.log(`${MOD_ID}: [DETAILED DEBUG] GM storing roll data directly`);
         await updateRollLogGM(parsedEntry);
-        console.log(`${MOD_ID}: [DETAILED DEBUG] ===== ROLL DATA STORED BY GM =====`);
       } else {
         // Send request to GM via socketlib
-        console.log(`${MOD_ID}: [DETAILED DEBUG] Player sending roll data to GM via socketlib`);
-        console.log(`${MOD_ID}: [DETAILED DEBUG] gurpsRollStatsSocket exists:`, !!gurpsRollStatsSocket);
-        console.log(`${MOD_ID}: [DETAILED DEBUG] executeAsGM function exists:`, !!(gurpsRollStatsSocket && gurpsRollStatsSocket.executeAsGM));
         if (gurpsRollStatsSocket && gurpsRollStatsSocket.executeAsGM) {
           gurpsRollStatsSocket.executeAsGM('updateRollLog', parsedEntry);
-          console.log(`${MOD_ID}: [DETAILED DEBUG] ===== ROLL DATA SENT TO GM VIA SOCKETLIB =====`);
         } else {
           console.warn(`${MOD_ID}: SocketLib not available for updateRollLog`);
         }
@@ -630,15 +527,11 @@ Hooks.on("ready", () => {
       if (globalIconsEnabled && playerShowCounters && !isBlindRoll) {
         let userId = message.user ?? message.userId;
         userId = effectManager.normalizeUserId(userId); // Normalize to string
-        
-        console.log(`${MOD_ID}: [DETAILED DEBUG] Processing effects for user ${userId} (blind: ${isBlindRoll})`);
-        
         const isSuccess = parsedEntry.success === true;
         const isFailure = parsedEntry.success === false;
         const isCriticalSuccess = parsedEntry.isCritSuccess;
         const isCriticalFailure = parsedEntry.isCritFailure;
 
-        console.log(`${MOD_ID}: [DETAILED DEBUG] Roll outcome - success: ${isSuccess}, failure: ${isFailure}, critSuccess: ${isCriticalSuccess}, critFailure: ${isCriticalFailure}`);
 
         // Get current effect theme
         const currentEffectTheme = game.settings.get(MOD_ID, SET_EFFECT_THEME) || 'fire';
@@ -650,11 +543,9 @@ Hooks.on("ready", () => {
           setTimeout(() => {
             messageElement = document.querySelector(`[data-message-id="${message.id}"]`);
             if (messageElement) {
-              console.log(`${MOD_ID}: [DETAILED DEBUG] [CRITICAL SUCCESS] Found message element for immediate effect application`);
               // Apply roll outcome with immediate message element for critical success
               effectManager.applyRollOutcomeToEffect(userId, currentEffectTheme, isSuccess, isFailure, isCriticalSuccess, isCriticalFailure, messageElement);
             } else {
-              console.warn(`${MOD_ID}: [DETAILED DEBUG] [CRITICAL SUCCESS] Message element not found, applying without immediate effect`);
               // Fallback without message element
               effectManager.applyRollOutcomeToEffect(userId, currentEffectTheme, isSuccess, isFailure, isCriticalSuccess, isCriticalFailure);
             }
@@ -669,15 +560,11 @@ Hooks.on("ready", () => {
           setTimeout(() => {
             const messageElement = document.querySelector(`[data-message-id="${message.id}"]`);
             if (messageElement) {
-              console.log(`${MOD_ID}: [DETAILED DEBUG] Applying effects to current message ${message.id} for user ${userId}`);
               effectManager.applyEffectToSpecificMessage(messageElement, userId, currentEffectTheme);
             } else {
-              console.warn(`${MOD_ID}: [DETAILED DEBUG] Message element not found for message ${message.id}`);
             }
           }, 100);
         }
-      } else if (isBlindRoll) {
-        console.log(`${MOD_ID}: [DETAILED DEBUG] Skipping effect processing for blind roll from user ${message.user ?? message.userId}`);
       }
     } catch (error) {
       console.error(`${MOD_ID} message parsing error:`, error);
@@ -709,5 +596,4 @@ Hooks.on("ready", () => {
     }
   });
 
-  console.log(`${MOD_ID}: Roll logging hooks registered successfully`);
 });

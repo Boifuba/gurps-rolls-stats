@@ -49,11 +49,9 @@ export function getActorName(speaker) {
 export function parseMessage(msg) {
   // Use GURPS.lastTargetedRoll if available
   if (typeof GURPS !== 'undefined' && GURPS.lastTargetedRoll) {
-    console.log(`${MOD_ID}: [DEBUG] Using GURPS.lastTargetedRoll data directly`);
     return parseFromGurpsObject(msg, GURPS.lastTargetedRoll);
   }
   
-  console.log(`${MOD_ID}: [DEBUG] GURPS.lastTargetedRoll not available`);
   return null;
 }
 

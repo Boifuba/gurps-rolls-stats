@@ -1,3 +1,4 @@
+[![Donate](https://img.shields.io/badge/Donate-Sponsor%20on%20GitHub-black?logo=github)](https://github.com/sponsors/Boifuba)
 # GURPS Roll Stats
 
 A comprehensive Foundry VTT module for collecting, analyzing, and visualizing 3d6 roll statistics in GURPS games, featuring an innovative "On Fire" effect system and attribute tracking.
@@ -346,7 +347,6 @@ The module uses `GURPS.lastTargetedRoll` object for accurate roll detection:
 ### Resetting Data
 - **`/stats reset`**: Clear roll statistics only (GM only)
 - **`/stats fullreset`**: Complete module reset including effects and settings (GM only)
-- **Individual clearing**: Use settings to clear specific user effects
 
 ### Data Persistence
 - All data is stored in Foundry's world settings
@@ -373,17 +373,26 @@ The module uses `GURPS.lastTargetedRoll` object for accurate roll detection:
 - Safe migration between data formats
 - Robust error handling
 
-## Support
-
-For issues, suggestions, or contributions:
-- **GitHub**: [gurps-rolls-stats](https://github.com/Boifuba/gurps-rolls-stats)
-- **Discord**: boifuba
-
-## License
-
-This module is provided as-is for the Foundry VTT community. Please respect the terms of use and contribute back to the community when possible.
-
 ---
+
+## Looking more modules for GURPS?
+
+- [Instant Bazaar](https://github.com/Boifuba/gurps-instant-bazaar)
+- [Instant Defaults](https://github.com/Boifuba/gurps-instant-defaults)
+- [Instant Counter](https://github.com/Boifuba/gurps-counter)
+- [Mookinator](https://github.com/Boifuba/mookinator)
+- [Size Matters](https://github.com/Boifuba/size-matters)
+- [Grapple Party](https://github.com/Boifuba/gurps-grapple-party)
+- [Roll Stats](https://github.com/Boifuba/gurps-rolls-stats)
+
+### Support the Project
+
+Consider supporting the project to help ongoing development.
+
+<a href="https://www.buymeacoffee.com/boifuba" target="_blank">
+  <img src="https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png" alt="Buy Me A Coffee" height="40">
+</a>
+
 
 ## Thanks
 

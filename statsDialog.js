@@ -3,41 +3,7 @@ import { MOD_ID, SET_LOG, SET_DAMAGE_LOG, SET_FATIGUE_LOG } from './constants.js
 import { computeStats } from './statsCalculator.js';
 import { drawRollsChart } from './chartUtils.js';
 import { escapeHtml } from './utils.js';
-
-/**
- * Gets all GM user IDs
- * @returns {string[]} Array of GM user IDs
- */
-function getGMUserIds() {
-  return game.users.filter(user => user.isGM).map(user => user.id);
-}
-
-/**
- * Gets all GM user names
- * @returns {string[]} Array of GM user names
- */
-function getGMUserNames() {
-  return game.users.filter(user => user.isGM).map(user => user.name);
-}
-
-/**
- * Gets all actor IDs owned by a specific user
- * @param {string} userId - The user ID
- * @returns {string[]} Array of actor IDs owned by the user
- */
-function getActorIdsForUser(userId) {
-  if (!userId) return [];
-  
-  const user = game.users.get(userId);
-  if (!user) return [];
-  
-  // Get all actors owned by this user
-  const ownedActors = game.actors.filter(actor => {
-    return actor.ownership && actor.ownership[userId] === 3; // OWNER permission level
-  });
-  
-  return ownedActors.map(actor => actor.id);
-}
+import { getGMUserIds, getGMUserNames, getActorImage, getActorIdsForUser } from './foundryUtils.js';
 
 /**
  * Computes damage and fatigue statistics for actors
@@ -64,8 +30,6 @@ function computeActorStats(selectedUserId = "", hideGMData = false) {
   
   if (selectedUserId) {
     const userActorIds = getActorIdsForUser(selectedUserId);
-    console.log(`${MOD_ID}: [DEBUG] User ${selectedUserId} owns actors:`, userActorIds);
-    
     filteredDamage = filteredDamageLog.filter(entry => userActorIds.includes(entry.actorId));
     filteredFatigue = filteredFatigueLog.filter(entry => userActorIds.includes(entry.actorId));
   } else {
@@ -76,13 +40,6 @@ function computeActorStats(selectedUserId = "", hideGMData = false) {
   // Calculate totals
   const totalDamage = filteredDamage.reduce((sum, entry) => sum + (entry.damageTaken || 0), 0);
   const totalFatigue = filteredFatigue.reduce((sum, entry) => sum + (entry.fatigueSpent || 0), 0);
-  
-  console.log(`${MOD_ID}: [DEBUG] Actor stats for user ${selectedUserId}:`, {
-    totalDamage,
-    totalFatigue,
-    damageEntries: filteredDamage.length,
-    fatigueEntries: filteredFatigue.length
-  });
   
   return {
     totalDamage,
@@ -202,15 +159,6 @@ function renderComparativeStats() {
 
   const performers = findTopPerformers(currentRolls);
 
-  function getActorImage(actorName) {
-    if (!actorName) return '';
-    const actor = game.actors.find(a => a.name === actorName);
-    if (actor?.img) {
-      return `<img src="${actor.img}" class="grs-actor-image-large" alt="${actorName}">`;
-    }
-    return '';
-  }
-
   const section = (title, color, bodyHtml) => `
     <div class="player-stat-card" style="border-left-color: ${color};">
       <h3>${title}</h3>
@@ -298,15 +246,6 @@ async function printRankingToChat(rankingType, rankingData) {
   };
   const title = titles[rankingType] || "Player Ranking";
 
-  function getActorImage(actorName) {
-    if (!actorName) return '';
-    const actor = game.actors.find(a => a.name === actorName);
-    if (actor?.img) {
-      return `<img src="${actor.img}" class="grs-actor-image-small" alt="${actorName}">`;
-    }
-    return '';
-  }
-
   // Group players by their metric value to handle ties
   const groups = [];
   let currentRank = 1;
@@ -360,7 +299,7 @@ async function printRankingToChat(rankingType, rankingData) {
       
       return `
         <div class="grs-ranking-player${group.players.indexOf(p) === group.players.length - 1 ? '' : ' grs-border-bottom'}">
-          ${getActorImage(p.actor)}
+          ${getActorImage(p.actor, 'grs-actor-image-small')}
           <div class="grs-ranking-player-info">
             <span class="grs-ranking-player-name">${escapeHtml(p.actor)}</span>
             <span class="grs-ranking-player-user">(${escapeHtml(p.user)})</span><br>
@@ -496,7 +435,6 @@ function renderStats(selectedUser) {
     selectedUserId = user?.id || "";
   }
   
-  const stats = computeStats(currentRolls, selectedUser);
   const stats = computeStats(currentRolls, selectedUser, hideGMData);
   const actorStats = computeActorStats(selectedUserId, hideGMData);
 

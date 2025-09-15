@@ -47,17 +47,6 @@ async function processHPChange(actor, changes, userId) {
   
   const newHP = hpChange.value ?? currentHP;
   
-  console.log(`${MOD_ID}: [DEBUG] --- Debug de Mudança de HP ---`);
-  console.log(`${MOD_ID}: [DEBUG] ID do Ator: ${actor.id}`);
-  console.log(`${MOD_ID}: [DEBUG] Nome do Ator: ${actor.name}`);
-  console.log(`${MOD_ID}: [DEBUG] Pre-update HP from map: ${preUpdateActorData?.HP?.value}`);
-  console.log(`${MOD_ID}: [DEBUG] HP de GURPS.LastActor: ${GURPS?.LastActor?.system?.HP?.value}`);
-  console.log(`${MOD_ID}: [DEBUG] HP do objeto 'actor' (passado para o hook): ${actor.system?.HP?.value}`);
-  console.log(`${MOD_ID}: [DEBUG] HP 'atual' calculado (usado para comparação): ${currentHP}`);
-  console.log(`${MOD_ID}: [DEBUG] Novo HP (do objeto 'changes'): ${newHP}`);
-  console.log(`${MOD_ID}: [DEBUG] Condição newHP < currentHP: ${newHP < currentHP}`);
-  console.log(`${MOD_ID}: [DEBUG] --- Fim do Debug de Mudança de HP ---`);
-  
   // Only log if HP decreased (damage taken)
   if (newHP < currentHP) {
     const damageTaken = currentHP - newHP;
@@ -72,8 +61,6 @@ async function processHPChange(actor, changes, userId) {
       changedBy: getChangedByUser(userId),
       changedByUserId: userId
     };
-
-    console.log(`${MOD_ID}: [DAMAGE] ${actor.name} took ${damageTaken} damage (${currentHP} -> ${newHP})`);
 
     // Store the damage entry
     if (game.user.isGM) {
@@ -108,17 +95,6 @@ async function processFPChange(actor, changes, userId) {
   
   const newFP = fpChange.value ?? currentFP;
   
-  console.log(`${MOD_ID}: [DEBUG] --- Debug de Mudança de FP ---`);
-  console.log(`${MOD_ID}: [DEBUG] ID do Ator: ${actor.id}`);
-  console.log(`${MOD_ID}: [DEBUG] Nome do Ator: ${actor.name}`);
-  console.log(`${MOD_ID}: [DEBUG] Pre-update FP from map: ${preUpdateActorData?.FP?.value}`);
-  console.log(`${MOD_ID}: [DEBUG] FP de GURPS.LastActor: ${GURPS?.LastActor?.system?.FP?.value}`);
-  console.log(`${MOD_ID}: [DEBUG] FP do objeto 'actor' (passado para o hook): ${actor.system?.FP?.value}`);
-  console.log(`${MOD_ID}: [DEBUG] FP 'atual' calculado (usado para comparação): ${currentFP}`);
-  console.log(`${MOD_ID}: [DEBUG] Novo FP (do objeto 'changes'): ${newFP}`);
-  console.log(`${MOD_ID}: [DEBUG] Condição newFP < currentFP: ${newFP < currentFP}`);
-  console.log(`${MOD_ID}: [DEBUG] --- Fim do Debug de Mudança de FP ---`);
-  
   // Only log if FP decreased (fatigue spent)
   if (newFP < currentFP) {
     const fatigueSpent = currentFP - newFP;
@@ -133,8 +109,6 @@ async function processFPChange(actor, changes, userId) {
       changedBy: getChangedByUser(userId),
       changedByUserId: userId
     };
-
-    console.log(`${MOD_ID}: [FATIGUE] ${actor.name} spent ${fatigueSpent} fatigue (${currentFP} -> ${newFP})`);
 
     // Store the fatigue entry
     if (game.user.isGM) {
@@ -171,9 +145,6 @@ async function updateFatigueLogGM(fatigueEntry) {
 // NEW: Hook into preUpdateActor to store current HP/FP values before update
 Hooks.on("preUpdateActor", (actor, changes, options, userId) => {
   try {
-    console.log(`${MOD_ID}: [DEBUG] preUpdateActor hook disparado para ${actor.name}`);
-    console.log(`${MOD_ID}: [DEBUG] Storing pre-update data - HP: ${actor.system?.HP?.value}, FP: ${actor.system?.FP?.value}`);
-    
     // Store the current HP and FP values before the update is applied
     _actorPreUpdateData.set(actor.id, {
       HP: { value: actor.system?.HP?.value },
@@ -187,28 +158,18 @@ Hooks.on("preUpdateActor", (actor, changes, options, userId) => {
 // Hook into actor updates to track HP and FP changes
 Hooks.on("updateActor", async (actor, changes, options, userId) => {
   try {
-    // DEBUG: Verificar se o hook está sendo disparado
-    console.log(`${MOD_ID}: [DEBUG] updateActor hook disparado para ${actor.name}`, {
-      actorId: actor.id,
-      changes: changes,
-      userId: userId
-    });
-    
     // Process HP changes (damage taken)
     if (changes.system?.HP) {
-      console.log(`${MOD_ID}: [DEBUG] Detectada mudança de HP para ${actor.name}`);
       await processHPChange(actor, changes, userId);
     }
     
     // Process FP changes (fatigue spent)
     if (changes.system?.FP) {
-      console.log(`${MOD_ID}: [DEBUG] Detectada mudança de FP para ${actor.name}`);
       await processFPChange(actor, changes, userId);
     }
 
     // NEW: Clean up pre-update data after processing
     _actorPreUpdateData.delete(actor.id);
-    console.log(`${MOD_ID}: [DEBUG] Cleaned up pre-update data for ${actor.name}`);
 
   } catch (error) {
     console.error(`${MOD_ID}: Error processing actor attribute changes:`, error);
