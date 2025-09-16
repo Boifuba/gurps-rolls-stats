@@ -306,7 +306,7 @@ function registerSettings() {
     scope: "world",
     config: true,
     type: Boolean,
-    default: true
+    default: false
   });
 
   // Effect Theme Selection
@@ -389,7 +389,7 @@ function registerSettings() {
     scope: "client",
     config: true,
     type: Boolean,
-    default: true
+    default: false
   });
 
   game.settings.register(MOD_ID, SET_PLAYER_SHOW_CHAT_CONTROLS, {
@@ -407,7 +407,7 @@ function registerSettings() {
     scope: "client",
     config: true,
     type: Boolean,
-    default: false
+    default: true
   });
 
   // ==================== INTERNAL DATA STORAGE ====================

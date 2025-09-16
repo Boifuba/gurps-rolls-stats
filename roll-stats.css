@@ -12,7 +12,7 @@
   border: 1px solid var(--color-border, #ccc);
   border-radius: 6px;
   padding: 1rem;
-  background: var(--color-bg-option, #f8f9fa);
+  /* background: var(--color-bg-option, #f8f9fa); */
 }
 
 .grs-settings-title {
@@ -55,7 +55,7 @@
   border: 1px solid var(--color-border, #888);
   border-radius: 6px;
   cursor: pointer;
-  background: var(--color-control-bg, #f5f5f5);
+  /* background: var(--color-control-bg, #f5f5f5); */
   font-size: 1rem;
   display: inline-flex;
   align-items: center;
@@ -64,7 +64,7 @@
 }
 
 .grs-export-btn:hover {
-  background: var(--color-control-bg-hover, #eee);
+  /* background: var(--color-control-bg-hover, #eee); */
   transform: translateY(-1px);
   box-shadow: 0 2px 5px rgba(0,0,0,0.2);
 }
@@ -86,7 +86,7 @@
 }
 
 .player-entry:hover {
-  background-color: var(--color-control-bg-hover, rgba(233,236,239,.2));
+  /* background-color: var(--color-control-bg-hover, rgba(233,236,239,.2)); */
   transform: translateY(-2px);
   box-shadow: 0 3px 10px rgba(0,0,0,.2);
 }
@@ -96,11 +96,11 @@
   border: 1px solid var(--color-border, #888);
   border-radius: 6px;
   cursor: pointer;
-  background: var(--color-control-bg, #f5f5f5);
+  /* background: var(--color-control-bg, #f5f5f5); */
 }
 
 .grs-print-btn:hover {
-  background: var(--color-control-bg-hover, #eee);
+  /* background: var(--color-control-bg-hover, #eee); */
 }
 
 /* Player Stat Card Styles */
@@ -253,12 +253,7 @@
 }
 
 /* Chat Stats Styles */
-.grs-chat-stats {
-  border-radius: 8px;
-  padding: 1rem;
-  margin: .5rem 0;
-  max-width: 420px;
-}
+
 
 .grs-chat-stats-header {
   display: flex;
@@ -289,7 +284,7 @@
 .grs-ranking-group {
   margin: .5rem 0;
   border-radius: 6px;
-  background: var(--color-bg-option, #f8f9fa);
+  /* background: var(--color-bg-option, #f8f9fa); */
   border: 1px solid #ddd;
 }
 
@@ -297,7 +292,7 @@
   display: flex;
   align-items: center;
   padding: .75rem;
-  background: var(--color-control-bg, #e9ecef);
+  /* background: var(--color-control-bg, #e9ecef); */
   border-radius: 6px 6px 0 0;
   border-bottom: 2px solid #ccc;
 }
@@ -513,10 +508,7 @@
 
 /* Chat Stats Enhanced Styles */
 .grs-chat-stats {
-  border-radius: 8px;
-  padding: 1rem;
-  margin: 0.5rem 0;
-  max-width: 420px;
+
 }
 
 .grs-chat-stats-centered-title {

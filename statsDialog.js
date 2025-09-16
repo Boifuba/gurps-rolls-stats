@@ -785,7 +785,7 @@ export async function showStatsDialog(selectedUser = "") {
       },
       { 
         action: "send-to-chat", 
-        label: "Enviar para Chat", 
+        label: "Send to chat", 
         icon: "fa-solid fa-paper-plane",
         callback: async (event, button, dialog) => {
           await sendStatsToChat();
